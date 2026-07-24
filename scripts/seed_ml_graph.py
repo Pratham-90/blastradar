@@ -70,6 +70,29 @@ FEATURE_TABLES: dict[str, list[str]] = {
     ],
 }
 
+# Curated, semantically-plausible source columns per feature. Each entry is an
+# ordered list of (table_keyword, column_keyword) candidates; the resolver picks
+# the first that matches a real discovered dataset+column, then falls back to any
+# themed column, then any column (so it degrades gracefully on other datapacks).
+FEATURE_SOURCES: dict[tuple[str, str], list[tuple[str, str]]] = {
+    ("customer_features", "days_since_signup"):    [("customers", "customer_since")],
+    ("customer_features", "lifetime_order_count"): [("order_history", "order_id"), ("orders", "order_id")],
+    ("customer_features", "avg_order_value"):      [("orders", "order_total"), ("order_details", "order_total")],
+    ("customer_features", "is_active_30d"):        [("order_history", "as_of_date")],
+    ("customer_features", "loyalty_tier"):         [("customers", "customer_class")],
+    ("order_features", "order_total_avg"):         [("order_details", "order_total"), ("orders", "order_total")],
+    ("order_features", "order_item_count"):        [("order_items", "quantity")],
+    ("order_features", "discount_amount"):         [("order_items", "unit_price"), ("orders", "cost_of_delivery")],
+    ("order_features", "is_first_order"):          [("orders", "order_date")],
+    ("session_features", "session_count_7d"):      [("order_history", "order_status"), ("orders", "order_status")],
+    ("session_features", "avg_session_duration"):  [("order_items", "dispatch_date"), ("orders", "order_mode")],
+    ("session_features", "last_session_recency"):  [("order_history", "as_of_date")],
+}
+# Feature table -> theme keyword for the themed fallback.
+TABLE_THEME = {"customer_features": "customer", "order_features": "order",
+               "session_features": "order"}
+PREFERRED_SRC_PLATFORMS = ("dbt", "snowflake", "bigquery", "redshift", "postgres")
+
 # Which feature tables each model consumes.
 MODELS: dict[str, dict] = {
     "churn_model_v1": {"group": "churn_model", "version": "1",
@@ -102,70 +125,97 @@ def _is_keyish(field_path: str, is_key: bool | None) -> bool:
     return bool(is_key) or any(k in low for k in KEYISH)
 
 
-def discover_source_columns(graph, n_needed: int) -> list[dict]:
-    """Discover (dataset_urn, column, native_type, keyish) pairs from the datapack.
+def _short_table(urn: str) -> str:
+    """Short table name from a dataset URN (last dotted/slashed segment)."""
+    body = urn.split("dataPlatform:", 1)[1] if "dataPlatform:" in urn else urn
+    name = body.split(",")[1] if "," in body else body
+    return name.split(".")[-1].split("/")[-1].lower()
 
-    Spreads picks across as many distinct datasets as possible, prefers non-key
-    columns (more plausibly 'droppable'), and is deterministic (sorted).
+
+def index_datasets(graph) -> dict[str, tuple[str, dict[str, tuple[str, str, bool]]]]:
+    """short_table -> (dataset_urn, {col_lower: (fieldPath, native_type, is_key)}).
+
+    DB-backed listing (authoritative, no search-index lag). When several platforms
+    share a table name, prefer dbt/warehouse platforms.
     """
-    all_urns = list(graph.get_urns_by_filter(entity_types=["dataset"], batch_size=1000))
-
-    def sort_key(u: str):
-        plat = _platform_of(u)
-        rank = PREFERRED_PLATFORMS.index(plat) if plat in PREFERRED_PLATFORMS else 99
-        return (rank, u)
-
-    datasets = sorted(all_urns, key=sort_key)
-    # Build per-dataset column lists (non-key first).
-    per_dataset: list[tuple[str, list[dict]]] = []
-    for urn in datasets:
+    idx: dict[str, tuple[str, dict]] = {}
+    for urn in graph.list_all_entity_urns("dataset", 0, 1000) or []:
         sm = graph.get_schema_metadata(urn)
         if not sm or not sm.fields:
             continue
-        cols = [
-            {"dataset_urn": urn, "column": f.fieldPath,
-             "native_type": f.nativeDataType,
-             "keyish": _is_keyish(f.fieldPath, f.isPartOfKey)}
+        cols = {
+            f.fieldPath.lower(): (f.fieldPath, f.nativeDataType,
+                                  _is_keyish(f.fieldPath, f.isPartOfKey))
             for f in sm.fields
-        ]
-        cols.sort(key=lambda c: (c["keyish"], c["column"]))
-        if cols:
-            per_dataset.append((urn, cols))
-        if len(per_dataset) >= n_needed * 2:  # enough spread
-            break
+        }
+        short = _short_table(urn)
+        plat = _platform_of(urn)
+        rank = PREFERRED_SRC_PLATFORMS.index(plat) if plat in PREFERRED_SRC_PLATFORMS else 99
+        if short not in idx:
+            idx[short] = (urn, cols, rank)  # type: ignore[assignment]
+        else:
+            if rank < idx[short][2]:  # type: ignore[index]
+                idx[short] = (urn, cols, rank)  # type: ignore[assignment]
+    return {k: (v[0], v[1]) for k, v in idx.items()}
 
-    if not per_dataset:
-        raise RuntimeError(
-            "No datasets with schema fields found. Is the datapack ingested?"
-        )
 
-    # Round-robin: take column 0 from each dataset, then column 1, etc.
+def _match(idx, table_kw: str, col_kw: str):
+    """Find (dataset_urn, fieldPath, native_type, keyish) by table + column keyword."""
+    for short, (urn, cols) in idx.items():
+        if table_kw not in short:
+            continue
+        if col_kw in cols:  # exact column
+            fp, nt, key = cols[col_kw]
+            return urn, fp, nt, key
+        for cl, (fp, nt, key) in cols.items():  # substring column
+            if col_kw in cl:
+                return urn, fp, nt, key
+    return None
+
+
+def _themed_fallback(idx, theme_kw: str, used: set[str]):
+    """Any non-key column from a table matching the feature-table theme."""
+    for short, (urn, cols) in sorted(idx.items()):
+        if theme_kw not in short:
+            continue
+        for _cl, (fp, nt, key) in sorted(cols.items()):
+            sf = b.make_schema_field_urn(urn, fp)
+            if not key and sf not in used:
+                return urn, fp, nt, key
+    return None
+
+
+def resolve_feature_sources(graph) -> list[dict]:
+    """Resolve each feature to a plausible real (dataset, column). Deterministic."""
+    idx = index_datasets(graph)
+    if not idx:
+        raise RuntimeError("No datasets with schema fields found. Is the datapack ingested?")
+
+    feature_names = [(t, f) for t, fs in FEATURE_TABLES.items() for f in fs]
     picks: list[dict] = []
-    depth = 0
-    while len(picks) < n_needed:
-        progressed = False
-        for _urn, cols in per_dataset:
-            if depth < len(cols):
-                picks.append(cols[depth])
-                progressed = True
-                if len(picks) == n_needed:
-                    break
-        depth += 1
-        if not progressed:
-            break
-    if len(picks) < n_needed:
-        raise RuntimeError(
-            f"Only discovered {len(picks)} source columns; need {n_needed}. "
-            "Datapack is smaller than expected."
-        )
+    used: set[str] = set()
+    for table, feat in feature_names:
+        hit = None
+        for table_kw, col_kw in FEATURE_SOURCES.get((table, feat), []):
+            hit = _match(idx, table_kw, col_kw)
+            if hit:
+                break
+        if hit is None:
+            hit = _themed_fallback(idx, TABLE_THEME.get(table, ""), used)
+        if hit is None:  # last resort: any column anywhere
+            some_urn, some_cols = next(iter(idx.items()))[1]
+            fp, nt, key = next(iter(some_cols.values()))
+            hit = (some_urn, fp, nt, key)
+        urn, fp, nt, key = hit
+        used.add(b.make_schema_field_urn(urn, fp))
+        picks.append({"dataset_urn": urn, "column": fp, "native_type": nt, "keyish": key})
     return picks
 
 
 def build_plan(graph) -> dict:
     """Assign discovered columns to the 12 feature slots and compute all URNs."""
     feature_names = [(t, f) for t, fs in FEATURE_TABLES.items() for f in fs]
-    n = len(feature_names)
-    sources = discover_source_columns(graph, n)
+    sources = resolve_feature_sources(graph)
 
     features: dict[str, dict] = {}
     for (table, feat), src in zip(feature_names, sources):
@@ -225,10 +275,13 @@ def build_plan(graph) -> dict:
             "_dpi": dpi,  # not serialized
         }
 
-    # Demo drop target: first non-keyish feature source of customer_features.
+    # Demo drop target: prefer days_since_signup (customers.customer_since — a
+    # believable "rename the signup column" break), else first non-key customer feature.
     cust_feats = [u for u, fv in features.items() if fv["table"] == "customer_features"]
+    preferred = b.make_ml_feature_urn("customer_features", "days_since_signup")
     target_feat = next(
-        (u for u in cust_feats if not features[u]["keyish"]), cust_feats[0]
+        (u for u in cust_feats if u == preferred and not features[u]["keyish"]),
+        next((u for u in cust_feats if not features[u]["keyish"]), cust_feats[0]),
     )
     tf = features[target_feat]
     downstream_models = [
@@ -267,11 +320,18 @@ def emit_plan(graph, plan: dict) -> None:
         emit(urn, models.MLModelGroupPropertiesClass(
             name=g["name"], description=f"Blastradar seed group: {g['name']}"))
 
-    # Features (column-level sources) then feature tables
+    # Features: GMS requires `sources` to be DATASET urns (schemaField is rejected
+    # at /sources/*), so we link the dataset and record the exact column in
+    # customProperties for our deterministic core to read. (See API-NOTES.)
     for urn, fv in plan["features"].items():
         emit(urn, models.MLFeaturePropertiesClass(
-            description=f"{fv['name']} (from {fv['source_column']})",
-            sources=[fv["schema_field_urn"]]))
+            description=f"{fv['name']} (derived from {fv['source_column']})",
+            sources=[fv["source_dataset"]],
+            customProperties={
+                "blastradar.source_column": fv["source_column"],
+                "blastradar.source_dataset": fv["source_dataset"],
+                "blastradar.source_schema_field": fv["schema_field_urn"],
+            }))
     for urn, ft in plan["feature_tables"].items():
         emit(urn, models.MLFeatureTablePropertiesClass(
             description=f"Blastradar seed feature table: {ft['name']}",

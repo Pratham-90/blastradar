@@ -1,0 +1,297 @@
+{
+  "features": {
+    "urn:li:mlFeature:(customer_features,days_since_signup)": {
+      "table": "customer_features",
+      "name": "days_since_signup",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD)",
+      "source_column": "customer_since",
+      "source_native_type": "TEXT",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD),customer_since)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(customer_features,lifetime_order_count)": {
+      "table": "customer_features",
+      "name": "lifetime_order_count",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD)",
+      "source_column": "order_id",
+      "source_native_type": "NUMBER",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD),order_id)",
+      "keyish": true
+    },
+    "urn:li:mlFeature:(customer_features,avg_order_value)": {
+      "table": "customer_features",
+      "name": "avg_order_value",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.orders,PROD)",
+      "source_column": "order_total",
+      "source_native_type": "FLOAT",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.orders,PROD),order_total)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(customer_features,is_active_30d)": {
+      "table": "customer_features",
+      "name": "is_active_30d",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD)",
+      "source_column": "as_of_date",
+      "source_native_type": "DATE",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD),as_of_date)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(customer_features,loyalty_tier)": {
+      "table": "customer_features",
+      "name": "loyalty_tier",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD)",
+      "source_column": "customer_class",
+      "source_native_type": "TEXT",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD),customer_class)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(order_features,order_total_avg)": {
+      "table": "order_features",
+      "name": "order_total_avg",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_details,PROD)",
+      "source_column": "order_total",
+      "source_native_type": "FLOAT",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_details,PROD),order_total)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(order_features,order_item_count)": {
+      "table": "order_features",
+      "name": "order_item_count",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD)",
+      "source_column": "quantity",
+      "source_native_type": "NUMBER",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD),quantity)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(order_features,discount_amount)": {
+      "table": "order_features",
+      "name": "discount_amount",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD)",
+      "source_column": "unit_price",
+      "source_native_type": "FLOAT",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD),unit_price)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(order_features,is_first_order)": {
+      "table": "order_features",
+      "name": "is_first_order",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.orders,PROD)",
+      "source_column": "order_date",
+      "source_native_type": "TEXT",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.orders,PROD),order_date)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(session_features,session_count_7d)": {
+      "table": "session_features",
+      "name": "session_count_7d",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD)",
+      "source_column": "order_status",
+      "source_native_type": "NUMBER",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD),order_status)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(session_features,avg_session_duration)": {
+      "table": "session_features",
+      "name": "avg_session_duration",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD)",
+      "source_column": "dispatch_date",
+      "source_native_type": "TEXT",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD),dispatch_date)",
+      "keyish": false
+    },
+    "urn:li:mlFeature:(session_features,last_session_recency)": {
+      "table": "session_features",
+      "name": "last_session_recency",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD)",
+      "source_column": "as_of_date",
+      "source_native_type": "DATE",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD),as_of_date)",
+      "keyish": false
+    }
+  },
+  "feature_tables": {
+    "urn:li:mlFeatureTable:(urn:li:dataPlatform:feast,customer_features)": {
+      "name": "customer_features",
+      "feature_urns": [
+        "urn:li:mlFeature:(customer_features,days_since_signup)",
+        "urn:li:mlFeature:(customer_features,lifetime_order_count)",
+        "urn:li:mlFeature:(customer_features,avg_order_value)",
+        "urn:li:mlFeature:(customer_features,is_active_30d)",
+        "urn:li:mlFeature:(customer_features,loyalty_tier)"
+      ]
+    },
+    "urn:li:mlFeatureTable:(urn:li:dataPlatform:feast,order_features)": {
+      "name": "order_features",
+      "feature_urns": [
+        "urn:li:mlFeature:(order_features,order_total_avg)",
+        "urn:li:mlFeature:(order_features,order_item_count)",
+        "urn:li:mlFeature:(order_features,discount_amount)",
+        "urn:li:mlFeature:(order_features,is_first_order)"
+      ]
+    },
+    "urn:li:mlFeatureTable:(urn:li:dataPlatform:feast,session_features)": {
+      "name": "session_features",
+      "feature_urns": [
+        "urn:li:mlFeature:(session_features,session_count_7d)",
+        "urn:li:mlFeature:(session_features,avg_session_duration)",
+        "urn:li:mlFeature:(session_features,last_session_recency)"
+      ]
+    }
+  },
+  "groups": {
+    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,churn_model,PROD)": {
+      "name": "churn_model"
+    },
+    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,ltv_model,PROD)": {
+      "name": "ltv_model"
+    }
+  },
+  "models": {
+    "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v1,PROD)": {
+      "name": "churn_model_v1",
+      "version": "1",
+      "group_urn": "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,churn_model,PROD)",
+      "feature_urns": [
+        "urn:li:mlFeature:(customer_features,days_since_signup)",
+        "urn:li:mlFeature:(customer_features,lifetime_order_count)",
+        "urn:li:mlFeature:(customer_features,avg_order_value)",
+        "urn:li:mlFeature:(customer_features,is_active_30d)",
+        "urn:li:mlFeature:(customer_features,loyalty_tier)",
+        "urn:li:mlFeature:(session_features,session_count_7d)",
+        "urn:li:mlFeature:(session_features,avg_session_duration)",
+        "urn:li:mlFeature:(session_features,last_session_recency)"
+      ],
+      "training_run_urn": "urn:li:dataProcessInstance:a4cc9c0ee8e70b0c88dc26247d2c1c8f",
+      "training_inlets": [
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.orders,PROD)"
+      ],
+      "deployment_urns": [],
+      "metrics": {
+        "auc": "0.78",
+        "recall": "0.71"
+      },
+      "hyper": {
+        "max_depth": "5",
+        "n_estimators": "200"
+      }
+    },
+    "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v2,PROD)": {
+      "name": "churn_model_v2",
+      "version": "2",
+      "group_urn": "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,churn_model,PROD)",
+      "feature_urns": [
+        "urn:li:mlFeature:(customer_features,days_since_signup)",
+        "urn:li:mlFeature:(customer_features,lifetime_order_count)",
+        "urn:li:mlFeature:(customer_features,avg_order_value)",
+        "urn:li:mlFeature:(customer_features,is_active_30d)",
+        "urn:li:mlFeature:(customer_features,loyalty_tier)",
+        "urn:li:mlFeature:(session_features,session_count_7d)",
+        "urn:li:mlFeature:(session_features,avg_session_duration)",
+        "urn:li:mlFeature:(session_features,last_session_recency)"
+      ],
+      "training_run_urn": "urn:li:dataProcessInstance:2db4f62d3e25e0c00513cc71d57b2dcc",
+      "training_inlets": [
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.orders,PROD)"
+      ],
+      "deployment_urns": [],
+      "metrics": {
+        "auc": "0.80",
+        "recall": "0.74"
+      },
+      "hyper": {
+        "max_depth": "6",
+        "n_estimators": "300"
+      }
+    },
+    "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v3,PROD)": {
+      "name": "churn_model_v3",
+      "version": "3",
+      "group_urn": "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,churn_model,PROD)",
+      "feature_urns": [
+        "urn:li:mlFeature:(customer_features,days_since_signup)",
+        "urn:li:mlFeature:(customer_features,lifetime_order_count)",
+        "urn:li:mlFeature:(customer_features,avg_order_value)",
+        "urn:li:mlFeature:(customer_features,is_active_30d)",
+        "urn:li:mlFeature:(customer_features,loyalty_tier)",
+        "urn:li:mlFeature:(session_features,session_count_7d)",
+        "urn:li:mlFeature:(session_features,avg_session_duration)",
+        "urn:li:mlFeature:(session_features,last_session_recency)"
+      ],
+      "training_run_urn": "urn:li:dataProcessInstance:c1458ab6b232c1994d8b11964e45efa3",
+      "training_inlets": [
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.orders,PROD)"
+      ],
+      "deployment_urns": [
+        "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,churn_model_v3-prod,PROD)",
+        "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,churn_model_v3-canary,PROD)"
+      ],
+      "metrics": {
+        "auc": "0.83",
+        "recall": "0.77"
+      },
+      "hyper": {
+        "max_depth": "6",
+        "n_estimators": "400"
+      }
+    },
+    "urn:li:mlModel:(urn:li:dataPlatform:mlflow,ltv_model_v1,PROD)": {
+      "name": "ltv_model_v1",
+      "version": "1",
+      "group_urn": "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,ltv_model,PROD)",
+      "feature_urns": [
+        "urn:li:mlFeature:(customer_features,days_since_signup)",
+        "urn:li:mlFeature:(customer_features,lifetime_order_count)",
+        "urn:li:mlFeature:(customer_features,avg_order_value)",
+        "urn:li:mlFeature:(customer_features,is_active_30d)",
+        "urn:li:mlFeature:(customer_features,loyalty_tier)",
+        "urn:li:mlFeature:(order_features,order_total_avg)",
+        "urn:li:mlFeature:(order_features,order_item_count)",
+        "urn:li:mlFeature:(order_features,discount_amount)",
+        "urn:li:mlFeature:(order_features,is_first_order)"
+      ],
+      "training_run_urn": "urn:li:dataProcessInstance:8e71853ca336304db1e5105911c2f3f2",
+      "training_inlets": [
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_details,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.order_items,PROD)",
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.orders,PROD)"
+      ],
+      "deployment_urns": [],
+      "metrics": {
+        "rmse": "42.5",
+        "mae": "31.0"
+      },
+      "hyper": {
+        "learning_rate": "0.05",
+        "num_leaves": "64"
+      }
+    }
+  },
+  "demo_drop_target": {
+    "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD)",
+    "source_column": "customer_since",
+    "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD),customer_since)",
+    "feature_urn": "urn:li:mlFeature:(customer_features,days_since_signup)",
+    "feature_table": "urn:li:mlFeatureTable:(urn:li:dataPlatform:feast,customer_features)",
+    "downstream_models": [
+      "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v1,PROD)",
+      "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v2,PROD)",
+      "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v3,PROD)",
+      "urn:li:mlModel:(urn:li:dataPlatform:mlflow,ltv_model_v1,PROD)"
+    ],
+    "downstream_deployments": [
+      "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,churn_model_v3-prod,PROD)",
+      "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,churn_model_v3-canary,PROD)"
+    ]
+  }
+}

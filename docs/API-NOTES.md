@@ -9,12 +9,18 @@ Verified facts about the DataHub Python SDK that Blastradar depends on.
 - `[docs]` — taken from the official docs.datahub.com tutorials/metamodel pages.
 - `[run]` — confirmed by executing against a live DataHub instance.
 
-> ⚠️ **Nothing here is `[run]`-confirmed yet.** During Phase 0 the local DataHub
-> (`datahub docker quickstart`) was **not reachable** (Docker daemon down, GMS
-> `:8080` unreachable) and no `.env` token was present. All signatures are
-> `[introspect]` and/or `[docs]`. The items tagged **LIVE-VERIFY** below are
-> behaviors (not signatures) that must be confirmed against the datapack before
-> Phase 1 relies on them.
+> ✅ **Live-run update (Phase 0 completed against a real instance).** The chain
+> `verify_cll.py` → `seed_ml_graph.py` → `verify_chain.py` was executed against a
+> local `datahub docker quickstart` (GMS `v1.5.0.6`, CLI `1.6.0.15`) loaded with
+> the ecommerce showcase bootstrap datapack. Items below now carry `[run]` where
+> confirmed by execution. Key live findings are called out in **LIVE-CONFIRMED** /
+> **LIVE-CORRECTION** callouts. Still untested by running: incident/tag/document
+> **write-back** (Phase 1D) — those remain `[docs]`/`[introspect]`.
+>
+> Connection note `[run]`: quickstart runs with **metadata auth disabled**, so a
+> **tokenless** connection works (`token=None`). A stale `~/.datahubenv` with
+> `server: datahub` breaks the CLI's own emitter — override with
+> `DATAHUB_GMS_URL=http://localhost:8080` when using `datahub` CLI commands.
 
 Environment used for introspection: Python **3.12.7** venv at `.venv/`,
 `acryl-datahub` base install (no extras needed — the REST emitter, `DataHubGraph`,
@@ -147,10 +153,30 @@ Representation in the metadata model: column-level lineage is stored as
 Column-level lineage **is available in DataHub Core / self-hosted** (not
 Cloud-only) — satisfies architectural rule 2. `[docs]`
 
-> **LIVE-VERIFY (Task 2):** the SDK *supports* column-level queries, but the
-> **showcase-ecommerce datapack must actually contain column-level edges** for the
-> premise to hold. `scripts/verify_cll.py` checks this. If absent, we emit a small
-> column-level subgraph ourselves (changes the Phase 0 plan — flagged to the user).
+> **LIVE-CONFIRMED (Task 2) `[run]`:** column-level lineage **is present** in the
+> ecommerce bootstrap datapack. `verify_cll.py` found e.g.
+> `dbt…customers.customer_id` ← `snowflake…customers.customer_id` via
+> `get_lineage(source_column="customer_id", direction="upstream")` returning
+> `LineagePath.column_name`. The premise holds.
+>
+> **LIVE-CORRECTION — traversability differs by edge type `[run]`.** From the
+> Phase 0 walk, which the Phase 1B walker must mirror:
+>
+> | Edge | Reachable via | NOT via |
+> | --- | --- | --- |
+> | dataset column → downstream dataset column | `get_lineage(source_column=…)` | — |
+> | dataset → mlFeature | **table-level** `get_lineage` (no `source_column`) | column-constrained `get_lineage` (returns `[]`) |
+> | mlFeature → mlModel | table-level `get_lineage` downstream (Consumes) | — |
+> | mlModel → mlModelDeployment | **aspect read** `MLModelProperties.deployments` | `get_lineage` (DeployedTo is not lineage) |
+> | mlModel → trainingJobs (DPI) → inputs | aspect reads (`MLModelProperties.trainingJobs`, `DataProcessInstanceInputClass.inputs`) | `get_lineage` |
+>
+> **Walker algorithm (decided):** changed column → dataset → column-level dataset
+> lineage for propagation → table-level lineage into mlFeatures (recover column
+> precision from the feature's `blastradar.source_column` custom property, since
+> feature sources are dataset-granular — see next section) → table-level into
+> mlModels → aspect-read deployments + training-run inputs (trained-vs-inference).
+> New entities take ~minutes to appear in the **search/graph index** after emit
+> (aspect reads are immediately consistent; lineage/search lag). `[run]`
 
 ## Creating ML entities (mlModelGroup, mlModel, mlFeatureTable, mlFeature)
 
@@ -217,15 +243,16 @@ graph.emit_mcp(mcp_feature); graph.emit_mcp(mcp_table)   # or graph.emit_mcps([.
 - `MLFeatureDataTypeClass` enum names: `CONTINUOUS, ORDINAL, NOMINAL, COUNT, TIME,
   TEXT, BINARY, INTERVAL, ...` `[introspect]`
 
-> **DISCREPANCY / KEY DESIGN POINT.** The docs example sets feature
-> `sources=[dataset_urn]` — **dataset-level**. Blastradar needs **column-level**:
-> a dropped *column* must reach the feature. `sources: List[str]` accepts any URN,
-> so we will pass **schemaField URNs** (`make_schema_field_urn`). Trusting
-> introspection over the docs example here.
-> **LIVE-VERIFY:** confirm that a schemaField URN in `sources` produces a
-> column-level lineage edge that `get_lineage(source_column=...)` traverses. If
-> DataHub only honors dataset-level `sources`, fall back to emitting an explicit
-> `fineGrainedLineage` on the feature's `upstreamLineage`.
+> **LIVE-CORRECTION `[run]` — sources are DATASET-level only.** The GMS **rejects**
+> schemaField URNs in `mlFeature.sources` with HTTP 422:
+> `"Entity type for urn: urn:li:schemaField:(…) is not a valid destination for
+> field path: /sources/*"`. So the docs were right and the introspection-based
+> hypothesis was wrong at the validation layer — `sources` must be **dataset**
+> URNs. **Workaround we adopted in `seed_ml_graph.py`:** set `sources=[dataset_urn]`
+> (creates the dataset→feature `DerivedFrom` edge) AND record the exact column in
+> `customProperties["blastradar.source_column"]` so the deterministic core keeps
+> column precision. (A future option for true fine-grained feature lineage is an
+> explicit `fineGrainedLineage` on the feature's `upstreamLineage` — untested.)
 
 **mlModelDeployment** `[introspect]`: emit `MLModelDeploymentPropertiesClass(
 customProperties=None, externalUrl=None, description=None, createdAt=None,

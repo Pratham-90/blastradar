@@ -7,17 +7,17 @@ Hackathon: DataHub Agent Hackathon. Deadline: **2026-08-10**.
 
 ## Phase checklist
 
-- [~] **Phase 0 — Foundations and verification** (IN PROGRESS — blocked on live DataHub)
+- [x] **Phase 0 — Foundations and verification** (COMPLETE — verified against live DataHub)
       - [x] Repo skeleton + tooling; `.venv` on Python 3.12.7.
       - [x] Task 1: `acryl-datahub==1.6.0.15` installed, introspected, docs cross-checked;
             `docs/API-NOTES.md` filled with VERIFIED signatures; dep pinned in pyproject.
-      - [x] Tasks 2–4 scripts written + SDK calls validated offline
-            (`verify_cll.py`, `seed_ml_graph.py`, `verify_chain.py`, `_datahub_env.py`).
-      - [ ] **BLOCKED:** run Tasks 2–4 against a live DataHub. Needs (a) Docker/GMS up
-            at `:8080`, (b) a `.env` with `DATAHUB_GMS_TOKEN` (see `.env.example`).
-      - [ ] LIVE-VERIFY items (see API-NOTES): column-level edges exist in the datapack;
-            schemaField `sources` are lineage-traversable; `document` entity + `raiseIncident`
-            available on the quickstart image.
+      - [x] Task 2 `[run]`: **column-level lineage CONFIRMED present** in the ecommerce
+            bootstrap datapack (`verify_cll.py`).
+      - [x] Task 3 `[run]`: `seed_ml_graph.py` created 2 groups, 4 models, 3 feature
+            tables, 12 features, 2 deployments, 4 training runs. `seeded_urns.json` written.
+      - [x] Task 4 `[run]`: `verify_chain.py` walked `customers.customer_since` →
+            feature → 4 models (all trained-on) → churn_model_v3 → 2 live deployments.
+      - [ ] Deferred to Phase 1D: incident/tag/document **write-back** not yet run live.
 - [ ] **Phase 1A — SQL delta analyzer**
       sqlglot-based before/after column diff (dropped / renamed / retyped), with
       SELECT * expansion via DataHub schema metadata.
@@ -48,9 +48,20 @@ Hackathon: DataHub Agent Hackathon. Deadline: **2026-08-10**.
 - **Seed via low-level MCP + aspect classes** (not the partial new-SDK MLModel),
   because `MLModelPropertiesClass` alone carries groups/mlFeatures/deployments/
   trainingJobs/hyperParams/metrics — one aspect, full control, idempotent.
-- **Feature `sources` use schemaField (column-level) URNs, not dataset URNs** — the
-  docs example is dataset-level; our premise needs column-level. (See API-NOTES
-  discrepancy note.)
+- **Feature `sources` are DATASET-level** (GMS rejects schemaField URNs with 422 —
+  live-corrected). Column precision is preserved by recording the exact source
+  column in the feature's `customProperties["blastradar.source_column"]`.
+- **Walker is a HYBRID traversal (live-decided):** column-level dataset lineage for
+  propagation → table-level lineage into features (column precision from the custom
+  property) → table-level into models → **aspect reads** for deployments and
+  training-run inputs (model→deployment `DeployedTo` is NOT lineage-traversable).
+  See the traversability table in API-NOTES.
+- **Local quickstart has auth DISABLED** → tokenless connections work; the helper
+  now allows no token. `~/.datahubenv` is broken (`server: datahub`), so the
+  `datahub` CLI needs `DATAHUB_GMS_URL=http://localhost:8080` overridden.
+- **Substrate:** the ecommerce showcase loads via `datahub docker ingest-sample-data`
+  (default bootstrap pack). `--pack showcase-ecommerce` resolves to an EMPTY file on
+  this build — do not use it.
 - **Write-back mapping (DataHub Core only):** incident = `raiseIncident` GraphQL;
   tag = `GlobalTagsClass`; document = new `datahub.sdk.document.Document`
   (`set_title`/`set_text`/`add_related_asset`).
@@ -59,13 +70,15 @@ Hackathon: DataHub Agent Hackathon. Deadline: **2026-08-10**.
 
 ## Known issues / deferred
 
-- **DataHub was DOWN during Phase 0** (Docker daemon not running, GMS `:8080`
-  unreachable, no `.env`). Tasks 2–4 are written and offline-validated but **not
-  run**. Bring up `datahub docker quickstart` + add `.env`, then run:
-  `verify_cll.py` → `seed_ml_graph.py` → `verify_chain.py`.
-- **LIVE-VERIFY (must confirm before Phase 1 relies on them):** column-level edges
-  actually present in showcase-ecommerce; schemaField `sources` produce traversable
-  lineage; `document` entity + `raiseIncident` mutation exist on the quickstart image.
+- **Index lag after emit:** new entities/edges take ~minutes to appear in the
+  search/graph index (aspect reads are immediately consistent). Scripts that rely on
+  `get_lineage`/search should tolerate lag. `seed_ml_graph.py` uses DB-backed
+  `list_all_entity_urns` for discovery to avoid this.
+- **Write-back NOT yet run live** (`raiseIncident` GraphQL, tag aspect, `document`
+  entity). Still `[docs]`/`[introspect]` — validate in Phase 1D. Confirm the
+  `document` entity + `raiseIncident` mutation exist on this GMS image when we get there.
+- **`_short()` URN display in verify_chain** truncates mlFeature names cosmetically
+  (shows the feature-table segment). Harmless; tidy if it bothers.
 - **Anthropic SDK deferred to Phase 1C** (narration) — version not yet verified.
 - `datahub.sdk` emits an `ExperimentalWarning`; import path may change when it
   stabilizes.

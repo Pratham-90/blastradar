@@ -1,20 +1,24 @@
 """Task 4 — Confirm the blast-radius chain end to end.
 
-Starts from the seeded demo drop-target column and walks DOWNSTREAM through the
-lineage graph, printing the full path it finds, ideally ending at a deployment.
-This is the exact traversal Phase 1B (datahub/walker.py) will automate.
+Starts from the seeded demo drop-target column and walks DOWNSTREAM to the
+deployment(s) it impacts. This is the exact traversal Phase 1B (datahub/walker.py)
+will automate — and Phase 0 proved (see PROGRESS.md / API-NOTES) that it must be a
+HYBRID walk, because different edges are reachable different ways:
 
-Two modes of evidence:
-  1. PURE LINEAGE walk via client.lineage.get_lineage (hop by hop). This is what
-     matters — it proves DataHub actually traverses column -> feature -> model ->
-     deployment as lineage.
-  2. If the pure walk cannot cross an edge (e.g. mlModel.mlFeatures is not exposed
-     as traversable lineage), fall back to reconstructing the chain from the
-     seeded relationships in seeded_urns.json — clearly labelled as NOT pure
-     lineage, so we know exactly what Phase 1B must handle.
+  * dataset  -> mlFeature   : table-level get_lineage downstream (DerivedFrom edge).
+                              NOTE: column-constrained get_lineage(source_column=)
+                              does NOT reach features — mlFeature.sources is
+                              dataset-granular (GMS rejects schemaField sources), so
+                              column precision is recovered from the feature's
+                              `blastradar.source_column` custom property.
+  * mlFeature -> mlModel    : table-level get_lineage downstream (Consumes edge).
+  * mlModel  -> deployment  : NOT lineage (DeployedTo is not traversed) — read the
+                              model's MLModelProperties.deployments aspect.
+  * trained-vs-inference    : read model.trainingJobs -> each dataProcessInstance's
+                              inputs; if the changed column's dataset is a training
+                              input, the model was TRAINED on it (not just serving).
 
 Run:  .venv/bin/python scripts/verify_chain.py
-
 Reads scripts/seeded_urns.json (produced by seed_ml_graph.py).
 """
 
@@ -23,79 +27,62 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from collections import deque
 from pathlib import Path
 
-from _datahub_env import get_client, urn_type
+import datahub.metadata.schema_classes as M
+
+from _datahub_env import get_client, get_graph, urn_type
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("verify_chain")
 
 URNS_IN = Path(__file__).resolve().parent / "seeded_urns.json"
-MAX_DEPTH = 6
-ML_TYPES = {"mlFeature", "mlFeatureTable", "mlModel", "mlModelDeployment"}
 
 
-def pure_lineage_walk(client, start_urn: str, start_column: str) -> list[list[str]]:
-    """BFS downstream from a column. Returns discovered node path(s) to a deployment.
-
-    Each node is rendered as "type:urn[:column]". Returns list of path-chains
-    (list of node labels) that terminate at an mlModelDeployment.
-    """
-    start = (start_urn, start_column)
-    parents: dict[tuple[str, str | None], tuple[str, str | None] | None] = {start: None}
-    frontier: deque[tuple[str, str | None]] = deque([start])
-    depth = {start: 0}
-    terminals: list[tuple[str, str | None]] = []
-
-    while frontier:
-        urn, column = frontier.popleft()
-        if depth[(urn, column)] >= MAX_DEPTH:
-            continue
-        results = client.lineage.get_lineage(
-            source_urn=urn, source_column=column, direction="downstream",
-            max_hops=1, count=200,
-        )
-        for r in results:
-            cols = [p.column_name for p in (r.paths or [])] or [None]
-            for c in cols:
-                node = (r.urn, c)
-                if node in parents:
-                    continue
-                parents[node] = (urn, column)
-                depth[node] = depth[(urn, column)] + 1
-                frontier.append(node)
-                if urn_type(r.urn) == "mlModelDeployment":
-                    terminals.append(node)
-
-    def chain(node):
-        out = []
-        while node is not None:
-            u, c = node
-            label = f"{urn_type(u) or 'dataset'}:{u.split(',')[-2] if ',' in u else u}"
-            if c:
-                label += f"[{c}]"
-            out.append(label)
-            node = parents[node]
-        return list(reversed(out))
-
-    return [chain(t) for t in terminals]
+def _down(client, urn: str, want_type: str) -> list[str]:
+    """One-hop table-level downstream neighbours of `urn` of a given entity type."""
+    results = client.lineage.get_lineage(
+        source_urn=urn, direction="downstream", max_hops=1, count=200
+    )
+    return [r.urn for r in results if urn_type(r.urn) == want_type]
 
 
-def seed_reconstruction(seed: dict) -> list[str]:
-    """Reconstruct the intended chain from seeded relationships (not pure lineage)."""
-    dt = seed["demo_drop_target"]
-    steps = [
-        f"column  {dt['source_dataset']} . {dt['source_column']}",
-        f"schemaField  {dt['schema_field_urn']}",
-        f"mlFeature  {dt['feature_urn']}",
-        f"mlFeatureTable  {dt['feature_table']}",
-    ]
-    for mu in dt["downstream_models"]:
-        steps.append(f"mlModel  {mu}")
-    for d in dt["downstream_deployments"]:
-        steps.append(f"mlModelDeployment  {d}")
-    return steps
+def _short(urn: str) -> str:
+    return urn.split(",")[-2] if "," in urn else urn
+
+
+def blast_walk(client, graph, dataset_urn: str, column: str) -> list[dict]:
+    """The real hybrid walk: column -> feature(s) -> model(s) -> deployment(s)."""
+    chains: list[dict] = []
+
+    # dataset -> features, keep only those whose recorded source column matches.
+    features = _down(client, dataset_urn, "mlFeature")
+    matched = []
+    for f in features:
+        fp = graph.get_aspect(f, M.MLFeaturePropertiesClass)
+        col = (fp.customProperties or {}).get("blastradar.source_column") if fp else None
+        if col == column:
+            matched.append(f)
+
+    for feat in matched:
+        for model in _down(client, feat, "mlModel"):
+            mp = graph.get_aspect(model, M.MLModelPropertiesClass)
+            deployments = list(mp.deployments or []) if mp else []
+            training_jobs = list(mp.trainingJobs or []) if mp else []
+
+            trained_on = False
+            for job in training_jobs:
+                di = graph.get_aspect(job, M.DataProcessInstanceInputClass)
+                if di and dataset_urn in (di.inputs or []):
+                    trained_on = True
+                    break
+
+            chains.append({
+                "feature": feat, "model": model,
+                "deployments": deployments, "trained_on": trained_on,
+                "deployed": bool(deployments),
+            })
+    return chains
 
 
 def main() -> int:
@@ -106,32 +93,34 @@ def main() -> int:
     dt = seed["demo_drop_target"]
 
     logger.info("=== Blastradar Task 4: end-to-end chain from a source column ===")
-    logger.info("Start column: %s . %s", dt["source_dataset"], dt["source_column"])
-    logger.info("Expected terminal deployments: %s\n",
-                ", ".join(dt["downstream_deployments"]) or "(none seeded)")
+    logger.info("Start column: %s . %s\n", _short(dt["source_dataset"]), dt["source_column"])
 
     client = get_client()
+    graph = get_graph()
     client.test_connection()
 
-    logger.info("--- Pure lineage walk (get_lineage, downstream) ---")
-    chains = pure_lineage_walk(client, dt["source_dataset"], dt["source_column"])
-    if chains:
-        logger.info("REACHED A DEPLOYMENT VIA PURE LINEAGE. ✅")
-        for i, ch in enumerate(chains, 1):
-            logger.info("  path %d:", i)
-            for j, node in enumerate(ch):
-                logger.info("    %s%s", "   " * j + "-> " if j else "", node)
-        return 0
+    chains = blast_walk(client, graph, dt["source_dataset"], dt["source_column"])
+    if not chains:
+        logger.error("No impact chain found — check indexing / seed. ❌")
+        return 1
 
-    logger.warning("Pure lineage walk did NOT reach a deployment. ⚠️")
-    logger.warning("This tells Phase 1B which edges are not lineage-traversable and "
-                   "must be bridged via aspect reads (mlModel.mlFeatures, "
-                   "mlModel.deployments).")
-    logger.info("\n--- Seed-metadata reconstruction (NOT pure lineage) ---")
-    for step in seed_reconstruction(seed):
-        logger.info("  -> %s", step)
-    # Non-zero: the pure-lineage goal wasn't met, so the human sees it plainly.
-    return 1
+    deployed = [c for c in chains if c["deployed"]]
+    logger.info("BLAST RADIUS (via live lineage + aspect reads): %d model(s) impacted, "
+                "%d deployed. ✅\n", len(chains), len(deployed))
+    logger.info("  %s . %s   [dropped column]", _short(dt["source_dataset"]), dt["source_column"])
+    for c in chains:
+        logger.info("    └─> feature %s", _short(c["feature"]))
+        tag = "TRAINED-ON" if c["trained_on"] else "inference-only"
+        logger.info("          └─> model %s  [%s]", _short(c["model"]), tag)
+        for d in c["deployments"]:
+            logger.info("                └─> DEPLOYMENT %s  🚨 (live)", _short(d))
+        if not c["deployments"]:
+            logger.info("                └─> (not deployed)")
+
+    logger.info("\nTerminal deployments reached: %s",
+                ", ".join(sorted({_short(d) for c in chains for d in c["deployments"]})) or "(none)")
+    logger.info("This is exactly the traversal Phase 1B will automate.")
+    return 0
 
 
 if __name__ == "__main__":

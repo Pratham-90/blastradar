@@ -50,16 +50,22 @@ def _first(keys: tuple[str, ...], default: str | None = None) -> str | None:
     return default
 
 
-def connection_settings() -> tuple[str, str]:
-    """Return (server_url, token). Raises if no token is available."""
+def connection_settings() -> tuple[str, str | None]:
+    """Return (server_url, token).
+
+    A token is optional: `datahub docker quickstart` runs with metadata auth
+    disabled, so tokenless connections work locally. If a token is present in
+    `.env`/env it is used (needed once auth is enabled). Only warn when absent.
+    """
     load_dotenv()
     server = _first(URL_KEYS, DEFAULT_URL) or DEFAULT_URL
     token = _first(TOKEN_KEYS)
     if not token:
-        raise RuntimeError(
-            "No DataHub token found. Create a gitignored .env at the repo root "
-            f"({ENV_PATH}) with DATAHUB_GMS_URL and DATAHUB_GMS_TOKEN, or export "
-            "those variables in your shell."
+        logger.warning(
+            "No DataHub token found (%s / env). Connecting tokenless — fine for a "
+            "local quickstart with auth disabled; set DATAHUB_GMS_TOKEN in .env once "
+            "auth is enabled.",
+            ENV_PATH,
         )
     return server, token
 
