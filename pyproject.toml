@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "blastradar"
+version = "0.0.0"
+description = "A CI agent that reviews data PRs for downstream ML impact via DataHub column-level lineage."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "sqlglot",
+    "pydantic",
+    "httpx",
+    "click",
+]
+
+# NOTE: the DataHub SDK and the Anthropic SDK are intentionally left out here.
+# They are added in Phase 0 once we have verified which versions we need against
+# a real install (see docs/API-NOTES.md).
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[project.scripts]
+blastradar = "blastradar.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/blastradar"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
