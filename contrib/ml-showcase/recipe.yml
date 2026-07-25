@@ -1,0 +1,22 @@
+# Ingest the ml-showcase datapack into a local DataHub.
+#
+#   datahub ingest -c recipe.yml
+#
+# Prerequisite: DataHub's ecommerce sample data must already be ingested (this pack
+# layers ML entities ON TOP of those datasets). With a quickstart:
+#   datahub docker ingest-sample-data
+#
+# The ML entities' feature `sources` and training-run inputs reference the ecommerce
+# sample dataset URNs. If your instance uses different dataset URNs, regenerate this
+# file against your instance:
+#   python scripts/seed_ml_graph.py --export-datapack contrib/ml-showcase/ml-showcase.json
+source:
+  type: file
+  config:
+    path: ./ml-showcase.json
+
+sink:
+  type: datahub-rest
+  config:
+    server: "${DATAHUB_GMS_URL:-http://localhost:8080}"
+    # token: "${DATAHUB_GMS_TOKEN}"   # only needed if metadata auth is enabled

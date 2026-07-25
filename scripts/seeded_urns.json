@@ -142,11 +142,11 @@
     "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,churn_model,PROD)": {
       "name": "churn_model"
     },
-    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,reactivation_model,PROD)": {
-      "name": "reactivation_model"
-    },
     "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,ltv_model,PROD)": {
       "name": "ltv_model"
+    },
+    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,reactivation_model,PROD)": {
+      "name": "reactivation_model"
     }
   },
   "models": {

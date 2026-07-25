@@ -48,6 +48,10 @@ logger = logging.getLogger("seed_ml_graph")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 URNS_OUT = Path(__file__).resolve().parent / "seeded_urns.json"
 
+# Fixed timestamp for datapack export so the committed file is byte-stable across
+# regenerations (live emit uses the real clock; only the packaged artifact is pinned).
+DATAPACK_TS = 1735689600000  # 2025-01-01T00:00:00Z, in epoch millis
+
 MODEL_PLATFORM = "mlflow"
 FEATURE_PLATFORM = "feast"
 DEPLOY_PLATFORM = "sagemaker"
@@ -357,22 +361,26 @@ def build_plan(graph) -> dict:
     }
 
 
-def emit_plan(graph, plan: dict) -> None:
-    ts = int(time.time() * 1000)
+def iter_mcps(plan: dict, ts: int):
+    """Yield every MCP that composes the ML graph.
 
-    def emit(entity_urn: str, aspect) -> None:
-        graph.emit_mcp(MetadataChangeProposalWrapper(entityUrn=entity_urn, aspect=aspect))
+    Single source of truth shared by the live emit (:func:`emit_plan`) and the
+    packaged datapack export (:func:`export_datapack`) — so the datapack is exactly
+    what the seed emits, never a hand-kept copy.
+    """
+    def mcp(entity_urn: str, aspect):
+        return MetadataChangeProposalWrapper(entityUrn=entity_urn, aspect=aspect)
 
     # Groups
     for urn, g in plan["groups"].items():
-        emit(urn, models.MLModelGroupPropertiesClass(
+        yield mcp(urn, models.MLModelGroupPropertiesClass(
             name=g["name"], description=f"Blastradar seed group: {g['name']}"))
 
     # Features: GMS requires `sources` to be DATASET urns (schemaField is rejected
     # at /sources/*), so we link the dataset and record the exact column in
     # customProperties for our deterministic core to read. (See API-NOTES.)
     for urn, fv in plan["features"].items():
-        emit(urn, models.MLFeaturePropertiesClass(
+        yield mcp(urn, models.MLFeaturePropertiesClass(
             description=f"{fv['name']} (derived from {fv['source_column']})",
             sources=[fv["source_dataset"]],
             customProperties={
@@ -381,23 +389,22 @@ def emit_plan(graph, plan: dict) -> None:
                 "blastradar.source_schema_field": fv["schema_field_urn"],
             }))
     for urn, ft in plan["feature_tables"].items():
-        emit(urn, models.MLFeatureTablePropertiesClass(
+        yield mcp(urn, models.MLFeatureTablePropertiesClass(
             description=f"Blastradar seed feature table: {ft['name']}",
             mlFeatures=ft["feature_urns"]))
 
     # Deployments
     for _mu, mv in plan["models"].items():
         for d in mv["deployment_urns"]:
-            emit(d, models.MLModelDeploymentPropertiesClass(
+            yield mcp(d, models.MLModelDeploymentPropertiesClass(
                 description=f"Deployment of {mv['name']}",
                 status=models.DeploymentStatusClass.IN_SERVICE, createdAt=ts))
 
     # Training runs (dataProcessInstance) + run properties
     for _mu, mv in plan["models"].items():
         dpi: DataProcessInstance = mv["_dpi"]
-        for mcp in dpi.generate_mcp(created_ts_millis=ts, materialize_iolets=False):
-            graph.emit_mcp(mcp)
-        emit(mv["training_run_urn"], models.MLTrainingRunPropertiesClass(
+        yield from dpi.generate_mcp(created_ts_millis=ts, materialize_iolets=False)
+        yield mcp(mv["training_run_urn"], models.MLTrainingRunPropertiesClass(
             id=f"{mv['name']}-training-run",
             hyperParams=[models.MLHyperParamClass(name=k, value=v)
                          for k, v in mv["hyper"].items()],
@@ -406,7 +413,7 @@ def emit_plan(graph, plan: dict) -> None:
 
     # Models (one MLModelProperties aspect carries everything)
     for urn, mv in plan["models"].items():
-        emit(urn, models.MLModelPropertiesClass(
+        yield mcp(urn, models.MLModelPropertiesClass(
             name=mv["name"],
             description=f"Blastradar seed model {mv['name']}",
             version=models.VersionTagClass(versionTag=mv["version"]),
@@ -423,31 +430,52 @@ def emit_plan(graph, plan: dict) -> None:
     referenced_tags = {t for mv in plan["models"].values() for t in mv["tags"]}
     for tag in sorted(referenced_tags):
         desc, color = TAG_META.get(tag, (f"Blastradar tag {tag}", None))
-        emit(b.make_tag_urn(tag), models.TagPropertiesClass(
+        yield mcp(b.make_tag_urn(tag), models.TagPropertiesClass(
             name=tag, description=desc, colorHex=color))
     referenced_owners = {mv["owner"] for mv in plan["models"].values() if mv["owner"]}
     for grp in sorted(referenced_owners):
-        emit(b.make_group_urn(grp), models.CorpGroupInfoClass(
+        yield mcp(b.make_group_urn(grp), models.CorpGroupInfoClass(
             admins=[], members=[], groups=[], displayName=f"@{grp}",
             description=f"Blastradar seed owner group @{grp}"))
 
     # Ownership + tags per model (varied: some unowned, some tagged for escalation).
     for urn, mv in plan["models"].items():
         if mv["owner_urn"]:
-            emit(urn, models.OwnershipClass(owners=[models.OwnerClass(
+            yield mcp(urn, models.OwnershipClass(owners=[models.OwnerClass(
                 owner=mv["owner_urn"], type=models.OwnershipTypeClass.TECHNICAL_OWNER)]))
         else:
             # Explicitly emit an empty owners set so re-seeding a now-unowned model
             # CLEARS any owner from a prior seed (aspect emits replace in place).
-            emit(urn, models.OwnershipClass(owners=[]))
+            yield mcp(urn, models.OwnershipClass(owners=[]))
         if mv["tag_urns"]:
-            emit(urn, models.GlobalTagsClass(tags=[
+            yield mcp(urn, models.GlobalTagsClass(tags=[
                 models.TagAssociationClass(tag=t) for t in mv["tag_urns"]]))
         else:
             # Clear any leftover tags (e.g. a `pending-upstream-change` from a prior
             # write-back run) so the seeded graph is a clean baseline — the write-back
             # tag then appears only after a real `make demo-live` write.
-            emit(urn, models.GlobalTagsClass(tags=[]))
+            yield mcp(urn, models.GlobalTagsClass(tags=[]))
+
+
+def emit_plan(graph, plan: dict) -> None:
+    """Emit the whole ML graph to a live DataHub (the seed path)."""
+    ts = int(time.time() * 1000)
+    for m in iter_mcps(plan, ts):
+        graph.emit_mcp(m)
+
+
+def export_datapack(plan: dict, path: Path, *, ts: int = DATAPACK_TS) -> int:
+    """Write the ML graph to a DataHub-ingestible metadata file (the `ml-showcase` datapack).
+
+    Same MCPs as :func:`emit_plan`, serialized to a file (the DataHub `file` source /
+    `datahub ingest` reads this) instead of a live GMS. Pinned timestamp for a
+    byte-stable committed artifact. Returns the MCP count.
+    """
+    from datahub.ingestion.sink.file import write_metadata_file
+    mcps = list(iter_mcps(plan, ts))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_metadata_file(path, mcps)
+    return len(mcps)
 
 
 def serializable(plan: dict) -> dict:
@@ -483,6 +511,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true",
                     help="discover + print the plan; do not emit or write json")
+    ap.add_argument("--export-datapack", metavar="PATH", default=None,
+                    help="write the ML graph to a DataHub-ingestible metadata file "
+                         "(the `ml-showcase` datapack) instead of emitting to GMS")
     args = ap.parse_args()
 
     graph = get_graph()
@@ -492,6 +523,13 @@ def main() -> int:
 
     if args.dry_run:
         logger.info("\n[--dry-run] nothing emitted, seeded_urns.json not written.")
+        return 0
+
+    if args.export_datapack:
+        out = Path(args.export_datapack)
+        n = export_datapack(plan, out)
+        logger.info("\nExported %d MCP(s) -> %s (ingest with: datahub ingest -c <recipe>)",
+                    n, out)
         return 0
 
     logger.info("\nEmitting ML graph to DataHub...")

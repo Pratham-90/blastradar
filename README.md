@@ -1,90 +1,197 @@
 # Blastradar
 
-Blastradar is a CI agent that reviews data pull requests for downstream
-machine-learning impact. When a PR changes a SQL/dbt model — dropping a column,
-renaming one, or changing a type — Blastradar traces DataHub's column-level
-lineage downstream to the ML features, models, and deployments that depend on it,
-scores the blast radius, and posts a plain-English PR comment before the change
-silently breaks a production model.
+**Blastradar is a CI agent that reviews data pull requests and tells you which
+production ML models a schema change is about to silently break** — using DataHub's
+column-level lineage to trace the blast radius from a dropped column all the way down
+to the models trained on it.
 
-Dropping an upstream column doesn't throw an error. The feature pipeline emits
-nulls and a model degrades for weeks before anyone notices. Blastradar closes
-that gap.
+## The problem
 
-It doesn't just comment — it **closes the loop back into DataHub**. For every
-critical or high impact it opens an **incident**, tags the model
-`pending-upstream-change`, and saves the full report as a knowledge-base
-**document**, then posts (and later updates in place) a single PR comment.
+Dropping or renaming a column in a SQL/dbt model doesn't throw an error. The feature
+pipeline downstream keeps running and silently emits nulls or stale values, so a
+production model degrades for weeks before anyone connects it back to the "harmless"
+cleanup PR that caused it. The person reviewing that PR has no way to see, at review
+time, that a column they're deleting is what a deployed churn model was trained on.
 
-## What it does on a PR
+## What a reviewer sees
 
-1. Parses the SQL diff with sqlglot to find the exact changed columns.
-2. Resolves them to DataHub URNs and walks column-level lineage downstream to the
-   ML features, models, and deployments.
-3. Scores each impacted model (trained-on vs. inference-only × deployed).
-4. Writes findings back into DataHub — incident, tag, document — **idempotently**.
-5. Posts / updates one PR comment explaining the blast radius.
+Open a PR that drops `customers.customer_since`, and Blastradar posts this back on the
+PR within seconds — *before* merge:
+
+```text
+### ⚠️ ML blast radius: 2 critical, 1 high, 2 medium
+
+This PR drops `customers.customer_since`, which feeds 5 downstream ML model(s) — the
+change will not raise an error, so the impact is silent.
+
+🔴 critical — churn_model_v3  (owner: @ml-platform · tags: Tier1)
+  Deployment: churn_model_v3-prod (IN_SERVICE), churn_model_v3-canary (IN_SERVICE)
+  Training:   trained on the changed column
+  Path:       customers.customer_since → days_since_signup → churn_model_v3
+  → Trained on this column AND serving live predictions. Dropping it doesn't fail the
+    pipeline; the feature silently emits nulls, so predictions degrade with no error.
+  Why critical: active deployment AND trained on the changed column; +tag Tier1
+
+🔴 critical — reactivation_model_v1  (owner: @growth-ml)
+  Deployment: reactivation_model_v1-prod (IN_SERVICE) …   Training: reads it at inference only
+  Path:       customers.customer_since → days_since_signup → reactivation_model_v1
+
+  … 🟠 1 high, 🟡 2 medium  (full report: examples/impact-critical-trained-on.md)
+
+### 📋 Write-back to DataHub
+Wrote findings back to DataHub Core: an incident + a `pending-upstream-change` tag on
+each critical/high model, and one knowledge-base document with the full report.
+```
+
+The whole point is the line **"trained on the changed column."** Blastradar
+distinguishes a model that was *trained* on the column (drop it and the model is
+quietly wrong) from one that only *reads* it at inference — a distinction no generic
+lineage view gives you. Three real sample reports — a critical trained-on hit, a
+medium non-deployed hit, and a clean no-impact PR — live in
+[`examples/`](examples/README.md).
+
+## Try it in 60 seconds
+
+No DataHub, no network, no API key. Runs the real pipeline against recorded fixtures:
 
 ```sh
+python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+make demo        # prints the PR comment above; completes in ~0.5s
+```
+
+`make test` runs the whole suite the same way (offline — the recorded fixtures double
+as the tests).
+
+## How it works
+
+Blastradar is **one deterministic pipeline with a single LLM call at the very end.**
+
+```mermaid
+flowchart LR
+    A[PR diff] --> B[SQL delta<br/>sqlglot]
+    B --> C[Resolve columns<br/>→ DataHub URNs]
+    C --> D[Walk column-level<br/>lineage → ML]
+    D --> E[Score severity<br/>trained vs. inference]
+    E --> F[[Narrate<br/>the ONE LLM call]]
+    F --> G[PR comment]
+    F --> H[Write back to DataHub<br/>incident · tag · document]
+    style F fill:#7c3aed,color:#fff
+```
+
+Everything left of *Narrate* is plain Python calling DataHub in a fixed algorithm: the
+lineage traversal and the impact/severity decisions are fully deterministic. The LLM
+is called **exactly once**, at the end, handed the already-resolved impact graph, and
+asked only to write prose and suggest a migration — it **never decides what is
+impacted**, and it structurally can't (the report template slots its prose into a
+pre-scored, pre-ordered list keyed by asset id).
+
+Why this split: a judge (or a reviewer) runs this once and needs the same answer every
+time. An agent looping over graph traversal is not reproducible, and a
+non-deterministic impact report reads as broken. So the part that must be correct is
+code, and the LLM only does the part it's actually good at — language. With no
+`ANTHROPIC_API_KEY`, a fully-templated narration takes over and the tool still works.
+
+More detail in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## The full loop against a real DataHub
+
+The offline demo above proves the pipeline; this runs it end-to-end against a live
+DataHub and actually writes the findings back. Needs Docker.
+
+```sh
+make demo-live
+```
+
+That one command stands up DataHub's docker stack, waits for health, ingests the
+ecommerce sample data, seeds the demo ML graph, and runs Blastradar with write-back
+on. To run the CLI yourself against an existing DataHub:
+
+```sh
+cp .env.example .env            # set DATAHUB_GMS_URL (+ token if auth is on)
+export TOOLS_IS_MUTATION_ENABLED=true
 blastradar analyze \
   --changes demo-repo/demo-pr.json \
   --pr-repo order-entry/analytics --pr-number 42 \
-  --dry-run                          # preview everything, write nothing
+  --no-post-comment             # drop this in CI to post the PR comment
 ```
 
-### ⚠️ Write-back is OFF by default
+> **⚠️ `TOOLS_IS_MUTATION_ENABLED=true` is required for write-back.** DataHub mutations
+> are OFF by default. Without this exact variable, Blastradar still analyzes and
+> comments, but writes nothing back — and the comment says so. **This is the #1 setup
+> gotcha: if incidents aren't appearing in DataHub, this variable is unset.**
+> `make demo-live` sets it for you. In CI, set it as an Actions *variable* (see
+> [`.github/workflows/blastradar.yml`](.github/workflows/blastradar.yml)).
 
-DataHub mutations require an explicit opt-in. **Set `TOOLS_IS_MUTATION_ENABLED=true`**
-or Blastradar analyzes and comments but writes nothing (the comment says so). This
-is the single most common setup miss — if incidents aren't appearing in DataHub,
-this variable is unset. See [`.env.example`](.env.example) and
-[`.github/workflows/blastradar.yml`](.github/workflows/blastradar.yml).
+## How it uses DataHub
 
-In CI the [GitHub Action](.github/workflows/blastradar.yml) runs this on every PR
-that touches a `.sql` / dbt model. The demo project it reviews lives in
-[`demo-repo/`](demo-repo/README.md).
+Blastradar is built entirely on **DataHub Core (open source)** — no Cloud-only
+features on the critical path. Specifically:
 
-## Quick start
+- **Column-level lineage** is the core traversal primitive. It calls the experimental
+  SDK's `DataHubClient.lineage.get_lineage(source_urn, source_column, direction,
+  max_hops)` and reads `LineageResult.paths[].column_name` to propagate the *exact*
+  changed column downstream — not just table-to-table edges.
+- **ML entities** are read as aspects via `DataHubGraph.get_aspect`:
+  `MLModelPropertiesClass` (a model's `mlFeatures`, `deployments`, `trainingJobs`,
+  `groups`), `MLFeaturePropertiesClass` (feature `sources` + the exact source column
+  recorded in `customProperties`), and `MLModelDeploymentPropertiesClass` (deployment
+  `status`, to tell serving from shelved). Terminals are `mlFeatureTable`, `mlModel`,
+  and `mlModelDeployment`.
+- **Training-run provenance** is what powers the trained-vs-inference distinction. Each
+  model's training run is a `dataProcessInstance`; Blastradar reads its
+  `DataProcessInstanceInputClass` inputs and checks whether the *changed dataset* was
+  among them. If yes, the model was trained on it (critical); if the model only
+  consumes the feature at serving time, it's inference-only.
+- **Write-back** uses DataHub Core primitives only: an **incident**
+  (`IncidentInfoClass` emitted on a deterministic URN via `emit_mcp`, so re-runs are
+  idempotent), a **tag** (`GlobalTagsClass`, `pending-upstream-change`, set-unioned
+  with existing tags), and a saved **document** (`Document.create_document`, linking
+  every impacted model). No assertions, contracts, or health-dashboard.
+- **Schema + resolution** use `DataHubGraph.get_schema_metadata` (to expand `SELECT *`
+  and validate columns) and `get_urns_by_filter` (to resolve a model name to a dataset
+  URN, returning *all* candidates as `AMBIGUOUS` rather than guessing).
 
-Two reproduction paths (architectural rule 3). Both assume Python **3.11+** and a
-one-time setup:
+Every signature Blastradar depends on is recorded, with how it was verified, in
+[`docs/API-NOTES.md`](docs/API-NOTES.md).
 
-```sh
-python3.11 -m venv .venv            # 3.12 also works; see PROGRESS.md
-.venv/bin/pip install -e ".[dev]"   # installs Blastradar + test deps
-```
+## Also in this repo
 
-**Offline — a stranger in 60 seconds.** No DataHub, no network, no API key:
+- [`skills/datahub-ml-impact/`](skills/datahub-ml-impact/) — a **DataHub Skill** that
+  wraps this library so you can ask, interactively, *"what ML breaks if I change this
+  column?"* Prepared as an upstream contribution to
+  [`datahub-project/datahub-skills`](https://github.com/datahub-project/datahub-skills).
+- [`contrib/ml-showcase/`](contrib/ml-showcase/) — the seeded ML graph packaged as a
+  reusable **`ml-showcase` datapack**. None of DataHub's sample datasets ship ML
+  entities; this fills that gap. Prepared as a second upstream contribution.
 
-```sh
-make demo     # full pipeline on recorded fixtures — prints the PR comment, <60s
-make test     # the whole suite, offline (the fixtures double as the tests)
-```
+## Limitations & future work
 
-`make demo` runs the real pipeline against [recorded DataHub responses](tests/fixtures/recorded/)
-and writes the rendered comment to [`examples/`](examples/README.md). See three sample
-shapes there: a critical trained-on hit, a medium non-deployed hit, and a clean
-no-impact PR.
+Honesty over overclaiming:
 
-**Live — the full loop against a real DataHub.** Needs Docker:
-
-```sh
-make demo-live   # stands up DataHub, seeds it, runs the pipeline WITH write-back
-```
-
-`make demo-live` sets `TOOLS_IS_MUTATION_ENABLED=true` for you, so the incidents,
-tags, and document actually land in DataHub (this is the #1 setup gotcha — see below).
-
-Regenerate the recorded fixtures against a live, seeded DataHub with
-`make record-fixtures` (they are generated, never hand-maintained — hand-maintained
-fixtures rot).
-
-## Status
-
-Early build for the DataHub Agent Hackathon (deadline 2026-08-10). See
-[PROGRESS.md](PROGRESS.md) for current state and [CLAUDE.md](CLAUDE.md) for the
-architecture and design rules. To validate a cold-start clone, follow
-[docs/CLEAN-MACHINE-CHECKLIST.md](docs/CLEAN-MACHINE-CHECKLIST.md).
+- **Single upstream demo graph.** The seeded showcase is one column → one feature → five
+  models → deployments. Blastradar's walker is multi-hop and handles dataset→dataset
+  column propagation, cycles, and a hop cap, but the *demo* graph doesn't exercise deep
+  dataset chains (the ecommerce sample carries no `transformOperation`/query text, so
+  per-hop SQL isn't shown).
+- **SDK lineage crashes on non-dataset downstreams.** `datahub.sdk`'s `get_lineage`
+  raises `InvalidUrnError` when a dataset has a **chart** downstream (it parses the
+  chart URN as a dataset). Affected columns can't currently be walked; Blastradar
+  degrades them to an explicit "incomplete" result, never a false all-clear. Fix:
+  skip non-dataset lineage rows in the client wrapper, or track an SDK fix.
+- **Incidents anchor on the changed dataset, not the model.** This GMS build rejects
+  `mlModel` URNs as an incident destination (`not a valid destination`), so the
+  incident is opened on the changed *dataset* with the affected model named in the
+  title/body. The document, whose `related_assets` *do* accept model URNs, links each
+  model directly.
+- **Severity escalation is potent.** Owning a model escalates its severity one level,
+  which can push a deployed inference-only model to critical. It's faithful to the
+  spec's rule and fully traceable in the `reasons` on every finding, but the clause is
+  a candidate to revisit.
+- **PR posting validated against a mock GitHub API** (no live github.com remote in the
+  build env); the real list/POST/PATCH calls run through the actual httpx path.
+- **Feature `sources` are dataset-granular** in this GMS (it rejects schemaField URNs on
+  `/sources/*`), so column precision into features is recovered from a
+  `blastradar.source_column` custom property rather than a native column edge.
 
 ## License
 
