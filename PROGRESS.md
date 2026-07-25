@@ -82,9 +82,36 @@ Hackathon: DataHub Agent Hackathon. Deadline: **2026-08-10**.
             `pending-upstream-change` on all 4 models (Tier1/Tier2 preserved), the document
             linking all 4 models + the dataset. PR comment POSTed then PATCHed in place
             (single comment) through the real CLI→httpx path against a local mock GitHub API.
-- [ ] **Phase 2 — Fixtures and reproducibility**
-      `make demo` (offline fixtures, <60s) and `make demo-live` (real DataHub);
-      fixtures double as the test suite.
+- [x] **Phase 2 — Fixtures and reproducibility** (COMPLETE — 74 tests green offline;
+      `make demo` cold-starts in ~0.5s)
+      - [x] Task 1: **record/replay** in `datahub/replay.py`. `Recorder` is the
+            `observer` hook the client was built for (Phase 1B); `ReplayClient` subclasses
+            `DataHubClient` and overrides just `_ensure` (no-op) + `_call` (serve by
+            **request signature**, not call order). Selection = `(method, canonical kwargs)`;
+            a miss raises `ReplayMiss` (loud, points at `make record-fixtures`).
+            `DataHubClient.from_env()` returns a `ReplayClient` when `BLASTRADAR_REPLAY`
+            is set — so the *same* CLI runs offline. `scripts/record_fixtures.py` +
+            `make record-fixtures` capture the live reads (113 calls) into
+            `tests/fixtures/recorded/datahub_calls.json`.
+      - [x] Task 2: `make demo` → `scripts/demo.py` replays the full pipeline (diff→…→report)
+            with **no DataHub/network/key** (templated narration), prints the comment, writes
+            `examples/`. **~0.5s** (budget 60s).
+      - [x] Task 3: `make demo-live` → `scripts/demo_live.sh`: `datahub docker quickstart`
+            (the version-matched official compose) → health-wait → ingest sample data → seed →
+            live pipeline with **`TOOLS_IS_MUTATION_ENABLED=true` set automatically**.
+      - [x] Task 4: live tests → **fixture tests** (`tests/conftest.py` forces replay
+            session-wide, so nothing can touch the network). Suite runs green with Docker down
+            AND with GMS pointed at a black hole. New `test_pipeline.py` (3 shapes + an
+            examples-don't-rot guard) and `test_replay.py`. CI: `.github/workflows/ci.yml`
+            (py3.11+3.12, offline, smoke-tests the demo, fails if `examples/` drift).
+      - [x] Task 5: `docs/CLEAN-MACHINE-CHECKLIST.md` — precise wipe/clone/README runbook for
+            the human clean-machine test (findings table to fill + hand back).
+      - [x] Task 6: three generated `examples/` (critical trained-on / medium non-deployed /
+            clean no-impact), each committed as `.md` + `.json`, indexed in `examples/README.md`.
+      - [x] Refactor: extracted `src/blastradar/pipeline.py` (`run_analysis` = the read core;
+            `finalize` = score→narrate→render→write-back footer). `cli.py` is now a thin
+            wrapper over it, so the CLI / demo / recorder / tests share ONE path (no drift).
+            Verified behaviour-preserving on the live path (`make writeback-demo` dry-run).
 - [ ] **Phase 3 — Docs, skill, and packaging**
       README, architecture docs, agent skill, and packaging for submission.
 
@@ -171,6 +198,29 @@ Hackathon: DataHub Agent Hackathon. Deadline: **2026-08-10**.
   through the CLI against a local mock GitHub API (POST then PATCH, one comment).
 - **Incident numeric priority is inverse:** `0 CRITICAL, 1 HIGH, 2 MEDIUM, 3 LOW` — map
   severity accordingly so the UI badge matches (`_INCIDENT_PRIORITY` in writeback).
+- **Phase 2 replay is signature-keyed, via `_call` override (not order).** The client
+  already funnelled every call through `_call(method, fn, **kwargs)` and ran an `observer`
+  after each — so `ReplayClient` needs to override only `_ensure` (skip connecting) and
+  `_call` (look the result up by `(method, kwargs)` signature). Zero per-method
+  duplication; a refactor that reorders reads can't break replay. One combined recording
+  file (union of all scenarios) — signatures make combining free.
+- **`make demo` drives the real CLI path offline.** `DataHubClient.from_env()` honours
+  `BLASTRADAR_REPLAY`, so the demo/tests exercise the exact production pipeline, just with
+  a replay client. Pipeline core was extracted to `pipeline.py` so cli/demo/recorder/tests
+  can't drift.
+- **Seed refinement for a genuine MEDIUM example (approved live):** `ltv_model_v1` is now
+  **unowned** (was `@analytics-ml`). With the owner-escalation rule, every *owned*
+  non-deployed model escalates MEDIUM→HIGH, and the only never-escalated model
+  (`churn_v2`) can't be reached in isolation — so no PR could top out at MEDIUM. Making
+  ltv unowned lets `order_details.order_total` → ltv render a real MEDIUM (the Task 6
+  medium example). Ripple: the flagship `customer_since` mix shifted **2C/2H/1M →
+  2C/1H/2M**. The seed now also **clears** ownership/tags for un-owned/un-tagged models
+  (empty-aspect emit) so re-seeding is a clean baseline and a leftover
+  `pending-upstream-change` tag from a prior write-back doesn't cling.
+- **`make demo-live` uses `datahub docker quickstart`, not a vendored compose.** DataHub's
+  stack is a large, version-coupled multi-service compose; the CLI fetches the one matching
+  the installed `acryl-datahub`. Hand-vendoring it would rot (same rationale as generated
+  fixtures). The script is idempotent and skips quickstart if GMS is already healthy.
 
 ## Known issues / deferred
 
@@ -212,3 +262,20 @@ Hackathon: DataHub Agent Hackathon. Deadline: **2026-08-10**.
   tags do NOT escalate (only Tier1/Critical), so `churn_v1` escalates via its owner, not its tag.
 - `datahub.sdk` emits an `ExperimentalWarning`; import path may change when it
   stabilizes.
+- **SDK `get_lineage` crashes on non-dataset downstreams (live-found, Phase 2):** some
+  datapack datasets (`order_items`, `orders`) have **chart** downstreams, and
+  `datahub.sdk.lineage_client` passes those URNs to `DatasetUrn.from_string` → raises
+  `InvalidUrnError: Passed an urn of type chart`. So those columns can't be walked and were
+  avoided as demo targets. `order_details` (an analytics table with no chart downstream) is
+  used for the medium example instead. If a real target ever hits a chart downstream the
+  walk raises `DataHubClientError` and the column is reported "incomplete" — not a false
+  all-clear. Deferred: catch/skip non-dataset lineage rows inside the client, or pin an SDK
+  with the fix.
+- **Phase 2 fixtures cover exactly the demo/example scenarios + edge cases** (customer_since,
+  order_details.order_total, phone_number, an unresolvable table). A new column/scenario
+  needs a re-record (`make record-fixtures` against a seeded live DataHub); a replay miss is
+  loud, so this fails visibly rather than silently. The recording reflects the **seeded**
+  graph — run `make seed` before `make record-fixtures` for a clean baseline.
+- **Clean-machine test (Task 5) still needs the human** — see
+  `docs/CLEAN-MACHINE-CHECKLIST.md`. `make demo-live`'s full cold-start (image pull) was not
+  timed here (DataHub was already up in this env); the checklist times it end-to-end.

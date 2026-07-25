@@ -1,0 +1,33 @@
+{
+  "changes": [
+    {
+      "kind": "DROP_COLUMN",
+      "table": "customers",
+      "column": "phone_number",
+      "new_column": null,
+      "source_file": "models/marts/customers.sql",
+      "resolution": "resolved",
+      "truncated": false
+    }
+  ],
+  "summary": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0
+  },
+  "analysis_incomplete": false,
+  "issues": [],
+  "narration_source": "template",
+  "narration_note": "LLM disabled (--no-llm/--dry-run)",
+  "change_summary": "This PR drops `customers.phone_number`, which feeds 0 downstream ML model(s) \u2014 the change will not raise an error, so the impact is silent.",
+  "migration": "Avoid an in-place change to `customers.phone_number`. Prefer a deprecate-then-drop: add the replacement column alongside the old one, backfill it, migrate every downstream feature and training pipeline, verify the feature store, then remove `phone_number` in a follow-up PR. Coordinate with the owning team(s) before merging.",
+  "impacts": [],
+  "writeback": {
+    "mutation_enabled": false,
+    "dry_run": false,
+    "ok": true,
+    "note": "no critical or high impacts",
+    "results": []
+  }
+}

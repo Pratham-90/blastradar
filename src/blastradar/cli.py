@@ -9,13 +9,21 @@ document) and posts/updates a single PR comment:
     blastradar analyze --changes demo-repo/demo-pr.json \
         --pr-repo acme/analytics --pr-number 42 --write-back --post-comment
 
-The LLM is called at most once, only in the narrate step (architectural rule 1).
-Write-back requires TOOLS_IS_MUTATION_ENABLED=true (see blastradar.datahub.writeback);
-without it the PR comment still posts and the write-back section says so.
+The analysis + assembly live in ``blastradar.pipeline`` (shared with the demo,
+the fixture recorder, and the tests, so they cannot drift). This module only wires
+CLI input to that pipeline and posts the comment. The LLM is called at most once,
+inside ``finalize`` (architectural rule 1). Write-back requires
+TOOLS_IS_MUTATION_ENABLED=true; without it the PR comment still posts and the
+write-back section says so.
+
+Set ``BLASTRADAR_REPLAY=<recording.json>`` to run the whole command offline against
+recorded fixtures — no DataHub, network, or credentials (this is how ``make demo``
+drives the real CLI).
 """
 
 from __future__ import annotations
 
+import json as _json
 import logging
 import os
 import sys
@@ -24,43 +32,17 @@ import click
 
 from blastradar.datahub.client import DataHubClient, DataHubClientError
 from blastradar.datahub.resolver import DataHubSchemaProvider, Resolver
-from blastradar.datahub.walker import walk
-from blastradar.datahub.writeback import WritebackSummary, mutations_enabled, write_back
 from blastradar.diff.extract import ExtractError, extract_from_git, extract_from_json
-from blastradar.diff.sql_delta import SqlDeltaError, analyze_delta
 from blastradar.github import (
     DEFAULT_API_URL,
     PRTarget,
     post_or_update_comment,
     pr_context_from_env,
 )
-from blastradar.models import (
-    ChangeEvent,
-    ChangeKind,
-    ImpactGraph,
-    PRContext,
-    ResolutionStatus,
-    ResolvedColumn,
-)
-from blastradar.narrate import narrate
-from blastradar.report import DEFAULT_FOOTER, Analysis, render_report
-from blastradar.scoring import _sort_key, score_graph
+from blastradar.models import PRContext
+from blastradar.pipeline import empty_message, finalize, run_analysis
 
 logger = logging.getLogger(__name__)
-
-COLUMN_CHANGE_KINDS = frozenset({
-    ChangeKind.DROP_COLUMN, ChangeKind.RENAME_COLUMN, ChangeKind.TYPE_CHANGE,
-})
-
-
-def _unreachable_graph(change: ChangeEvent, note: str) -> ImpactGraph:
-    """A stand-in graph so a DataHub failure surfaces as 'incomplete', not 'all-clear'."""
-    return ImpactGraph(
-        change=change,
-        resolution=ResolvedColumn(table=change.table, column=change.column,
-                                  status=ResolutionStatus.UNRESOLVED, note=note),
-        notes=(note,),
-    )
 
 
 def _resolve_pr(pr_repo: str, pr_number: int | None, pr_url: str,
@@ -130,15 +112,12 @@ def analyze(base: str | None, head: str | None, changes_json: str | None, repo_d
             raise click.UsageError("provide either --changes FILE or both --base and --head.")
     except ExtractError as e:
         raise click.ClickException(f"diff extraction failed: {e}") from e
-    if not changes:
-        click.echo("No changed .sql files in the input — nothing to analyze.")
-        return
 
     # 2. Connect to DataHub (read + write use the same client). A failure must not
-    #    become a false all-clear.
+    #    become a false all-clear. BLASTRADAR_REPLAY yields an offline ReplayClient.
     client: DataHubClient | None = None
     resolver: Resolver | None = None
-    schema = None
+    schema: DataHubSchemaProvider | None = None
     connect_note = ""
     try:
         client = DataHubClient.from_env()
@@ -149,95 +128,38 @@ def analyze(base: str | None, head: str | None, changes_json: str | None, repo_d
         connect_note = f"DataHub unreachable ({type(e).__name__}: {e})"
         logger.warning(connect_note)
 
-    # 3. SQL delta → ChangeEvents (SELECT * expands via the live schema when connected).
-    events: list[ChangeEvent] = []
-    extra_issues: list[str] = []
-    for fc in changes:
-        try:
-            delta = analyze_delta(fc, dialect=dialect, schema=schema)
-        except SqlDeltaError as e:
-            extra_issues.append(f"could not parse `{fc.path}`: {e}")
-            continue
-        events.extend(delta.changes)
-        for marker in delta.unresolved:
-            extra_issues.append(
-                f"`{marker.table}` has an unresolved `SELECT *` from "
-                f"{', '.join(marker.star_sources)} — impact for it was not analyzed.")
-
-    # 4. Walk each column change downstream to ML.
-    analyses: list[Analysis] = []
-    for ev in events:
-        if ev.kind is ChangeKind.DROP_TABLE:
-            extra_issues.append(f"`{ev.table}` is dropped entirely — table-level impact "
-                                "is not analyzed in this phase.")
-            continue
-        if ev.kind not in COLUMN_CHANGE_KINDS or ev.column is None:
-            continue
-        if client is None or resolver is None:
-            analyses.append(Analysis(ev, _unreachable_graph(ev, connect_note)))
-            continue
-        try:
-            graph = walk(ev, client=client, resolver=resolver, max_hops=max_hops)
-        except DataHubClientError as e:
-            graph = _unreachable_graph(ev, f"DataHub error during walk ({e})")
-        analyses.append(Analysis(ev, graph))
-
-    if not analyses and not extra_issues:
-        click.echo("Detected SQL changes, but none affect a resolvable output column.")
+    # 3. Analyze (delta → walk). The only DataHub-reading step.
+    result = run_analysis(changes, client=client, resolver=resolver, schema=schema,
+                          dialect=dialect, max_hops=max_hops, connect_note=connect_note)
+    msg = empty_message(result, changes)
+    if msg is not None:
+        click.echo(msg)
         return
 
-    # 5. Score, 6. narrate ONCE, 7. render the report BODY (footer added after write-back).
-    scored = [s for a in analyses for s in score_graph(a.graph)]
-    scored.sort(key=_sort_key)
-    representative = analyses[0].change if analyses else events[0]
-    narration = narrate(representative, scored, use_llm=not (no_llm or dry_run))
-    base_report = render_report(analyses, scored, narration,
-                                extra_issues=tuple(extra_issues), writeback_footer="")
+    # 4. Score, narrate once, render, and write findings back (idempotent; gated).
+    report = finalize(result, pr=pr, use_llm=not (no_llm or dry_run),
+                      client=client, do_writeback=do_writeback, dry_run=dry_run)
 
-    # 8. Write findings back into DataHub (idempotent; gated by TOOLS_IS_MUTATION_ENABLED).
-    summary = _run_writeback(do_writeback, scored, representative, pr,
-                             base_report.markdown, client, dry_run)
-    footer = summary.footer_markdown() if summary is not None else DEFAULT_FOOTER
-    final_markdown = base_report.markdown.rstrip() + "\n\n" + footer
-
-    # 9. Post or update the single PR comment (degrades to SKIPPED with no token).
+    # 5. Post or update the single PR comment (degrades to SKIPPED with no token).
     comment = None
     if do_comment:
         token = github_token or os.environ.get("GITHUB_TOKEN", "")
         api_url = os.environ.get("GITHUB_API_URL", DEFAULT_API_URL)
         target = PRTarget(repo=pr.repo, number=pr.number or 0, token=token, api_url=api_url)
-        comment = post_or_update_comment(target, final_markdown, dry_run=dry_run)
+        comment = post_or_update_comment(target, report.markdown, dry_run=dry_run)
         click.echo(f"[comment] {comment.status.value}"
                    f"{' — ' + comment.url if comment.url else ''}"
                    f"{' (' + comment.detail + ')' if comment.detail else ''}", err=True)
 
-    # 10. Output.
+    # 6. Output.
     if as_json:
-        data = dict(base_report.data)
-        if summary is not None:
-            data["writeback"] = summary.as_dict()
+        data = dict(report.data)
         if comment is not None:
             data["comment"] = {"status": comment.status.value, "url": comment.url,
                                "comment_id": comment.comment_id, "detail": comment.detail}
-        import json as _json
         click.echo(_json.dumps(data, indent=2))
     else:
-        click.echo(final_markdown)
-
-
-def _run_writeback(do_writeback: bool, scored, representative, pr, body_markdown,
-                   client, dry_run: bool) -> WritebackSummary | None:
-    """Run write-back if requested, tolerating an unreachable DataHub."""
-    if not do_writeback:
-        return None
-    # dry-run and 'mutations disabled' modes only PLAN — they never touch the client,
-    # so they work offline. A live write needs a connection.
-    if client is None and mutations_enabled() and not dry_run:
-        return WritebackSummary(
-            results=(), mutation_enabled=True, dry_run=False,
-            note="DataHub unreachable — write-back skipped; the PR comment still posts")
-    return write_back(scored, representative, pr, body_markdown,
-                      client=client, dry_run=dry_run)
+        click.echo(report.markdown)
 
 
 def main() -> None:

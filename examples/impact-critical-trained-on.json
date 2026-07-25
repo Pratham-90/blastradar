@@ -1,0 +1,220 @@
+{
+  "changes": [
+    {
+      "kind": "DROP_COLUMN",
+      "table": "customers",
+      "column": "customer_since",
+      "new_column": null,
+      "source_file": "models/marts/customers.sql",
+      "resolution": "resolved",
+      "truncated": false
+    }
+  ],
+  "summary": {
+    "critical": 2,
+    "high": 1,
+    "medium": 2,
+    "low": 0
+  },
+  "analysis_incomplete": false,
+  "issues": [],
+  "narration_source": "template",
+  "narration_note": "LLM disabled (--no-llm/--dry-run)",
+  "change_summary": "This PR drops `customers.customer_since`, which feeds 5 downstream ML model(s) \u2014 the change will not raise an error, so the impact is silent.",
+  "migration": "Avoid an in-place change to `customers.customer_since`. Prefer a deprecate-then-drop: add the replacement column alongside the old one, backfill it, migrate every downstream feature and training pipeline, verify the feature store, then remove `customer_since` in a follow-up PR. Coordinate with the owning team(s) before merging.",
+  "impacts": [
+    {
+      "id": "a1",
+      "model": "churn_model_v3",
+      "urn": "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v3,PROD)",
+      "severity": "CRITICAL",
+      "deployed": true,
+      "trained_on": true,
+      "deployments": [
+        {
+          "name": "churn_model_v3-canary",
+          "status": "IN_SERVICE"
+        },
+        {
+          "name": "churn_model_v3-prod",
+          "status": "IN_SERVICE"
+        }
+      ],
+      "owners": [
+        "ml-platform"
+      ],
+      "tags": [
+        "Tier1"
+      ],
+      "model_group": "churn_model",
+      "path": [
+        "customers.customer_since",
+        "days_since_signup",
+        "churn_model_v3"
+      ],
+      "reasons": [
+        "mlModel with an active deployment AND trained on the changed column",
+        "escalated one level: carries tag Tier1 (already at maximum severity)"
+      ],
+      "explanation": "`churn_model_v3` was trained on this column and is currently deployed and serving predictions. Dropping or renaming the column does not fail the pipeline; the feature silently emits nulls or stale values, so predictions degrade without any error surfacing."
+    },
+    {
+      "id": "a2",
+      "model": "reactivation_model_v1",
+      "urn": "urn:li:mlModel:(urn:li:dataPlatform:mlflow,reactivation_model_v1,PROD)",
+      "severity": "CRITICAL",
+      "deployed": true,
+      "trained_on": false,
+      "deployments": [
+        {
+          "name": "reactivation_model_v1-canary",
+          "status": "IN_SERVICE"
+        },
+        {
+          "name": "reactivation_model_v1-prod",
+          "status": "IN_SERVICE"
+        }
+      ],
+      "owners": [
+        "growth-ml"
+      ],
+      "tags": [],
+      "model_group": "reactivation_model",
+      "path": [
+        "customers.customer_since",
+        "days_since_signup",
+        "reactivation_model_v1"
+      ],
+      "reasons": [
+        "mlModel with an active deployment (inference-time consumption only)",
+        "escalated one level: owner group set (growth-ml)"
+      ],
+      "explanation": "`reactivation_model_v1` reads this column at inference time and is currently deployed and serving predictions. Dropping or renaming the column does not fail the pipeline; the feature silently emits nulls or stale values, so predictions degrade without any error surfacing."
+    },
+    {
+      "id": "a3",
+      "model": "churn_model_v1",
+      "urn": "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v1,PROD)",
+      "severity": "HIGH",
+      "deployed": false,
+      "trained_on": true,
+      "deployments": [],
+      "owners": [
+        "ml-platform"
+      ],
+      "tags": [
+        "Tier2"
+      ],
+      "model_group": "churn_model",
+      "path": [
+        "customers.customer_since",
+        "days_since_signup",
+        "churn_model_v1"
+      ],
+      "reasons": [
+        "mlModel with no active deployment",
+        "escalated one level: owner group set (ml-platform)"
+      ],
+      "explanation": "`churn_model_v1` was trained on this column and is not currently deployed. Dropping or renaming the column does not fail the pipeline; the feature silently emits nulls or stale values, so predictions degrade without any error surfacing."
+    },
+    {
+      "id": "a4",
+      "model": "churn_model_v2",
+      "urn": "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v2,PROD)",
+      "severity": "MEDIUM",
+      "deployed": false,
+      "trained_on": true,
+      "deployments": [],
+      "owners": [],
+      "tags": [],
+      "model_group": "churn_model",
+      "path": [
+        "customers.customer_since",
+        "days_since_signup",
+        "churn_model_v2"
+      ],
+      "reasons": [
+        "mlModel with no active deployment"
+      ],
+      "explanation": "`churn_model_v2` was trained on this column and is not currently deployed. Dropping or renaming the column does not fail the pipeline; the feature silently emits nulls or stale values, so predictions degrade without any error surfacing."
+    },
+    {
+      "id": "a5",
+      "model": "ltv_model_v1",
+      "urn": "urn:li:mlModel:(urn:li:dataPlatform:mlflow,ltv_model_v1,PROD)",
+      "severity": "MEDIUM",
+      "deployed": false,
+      "trained_on": true,
+      "deployments": [],
+      "owners": [],
+      "tags": [],
+      "model_group": "ltv_model",
+      "path": [
+        "customers.customer_since",
+        "days_since_signup",
+        "ltv_model_v1"
+      ],
+      "reasons": [
+        "mlModel with no active deployment"
+      ],
+      "explanation": "`ltv_model_v1` was trained on this column and is not currently deployed. Dropping or renaming the column does not fail the pipeline; the feature silently emits nulls or stale values, so predictions degrade without any error surfacing."
+    }
+  ],
+  "writeback": {
+    "mutation_enabled": false,
+    "dry_run": false,
+    "ok": true,
+    "note": "set TOOLS_IS_MUTATION_ENABLED=true to apply",
+    "results": [
+      {
+        "action": "incident",
+        "target": "churn_model_v3",
+        "status": "disabled",
+        "entity_urn": "urn:li:incident:blastradar-a1bc4981f0fd75e3",
+        "detail": "anchored on the changed dataset"
+      },
+      {
+        "action": "tag",
+        "target": "churn_model_v3",
+        "status": "disabled",
+        "entity_urn": null,
+        "detail": "tag `pending-upstream-change`"
+      },
+      {
+        "action": "incident",
+        "target": "reactivation_model_v1",
+        "status": "disabled",
+        "entity_urn": "urn:li:incident:blastradar-38e50fb5a4206e38",
+        "detail": "anchored on the changed dataset"
+      },
+      {
+        "action": "tag",
+        "target": "reactivation_model_v1",
+        "status": "disabled",
+        "entity_urn": null,
+        "detail": "tag `pending-upstream-change`"
+      },
+      {
+        "action": "incident",
+        "target": "churn_model_v1",
+        "status": "disabled",
+        "entity_urn": "urn:li:incident:blastradar-d2517156474e9146",
+        "detail": "anchored on the changed dataset"
+      },
+      {
+        "action": "tag",
+        "target": "churn_model_v1",
+        "status": "disabled",
+        "entity_urn": null,
+        "detail": "tag `pending-upstream-change`"
+      },
+      {
+        "action": "document",
+        "target": "knowledge base",
+        "status": "disabled",
+        "entity_urn": "urn:li:document:blastradar-order-entry-analytics-42-8ddb8ea2b1",
+        "detail": "full impact report"
+      }
+    ]
+  }
+}

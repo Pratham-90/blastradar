@@ -1,7 +1,5 @@
 # Blastradar
 
-> Stub — expanded in Phase 3.
-
 Blastradar is a CI agent that reviews data pull requests for downstream
 machine-learning impact. When a PR changes a SQL/dbt model — dropping a column,
 renaming one, or changing a type — Blastradar traces DataHub's column-level
@@ -46,18 +44,47 @@ In CI the [GitHub Action](.github/workflows/blastradar.yml) runs this on every P
 that touches a `.sql` / dbt model. The demo project it reviews lives in
 [`demo-repo/`](demo-repo/README.md).
 
+## Quick start
+
+Two reproduction paths (architectural rule 3). Both assume Python **3.11+** and a
+one-time setup:
+
+```sh
+python3.11 -m venv .venv            # 3.12 also works; see PROGRESS.md
+.venv/bin/pip install -e ".[dev]"   # installs Blastradar + test deps
+```
+
+**Offline — a stranger in 60 seconds.** No DataHub, no network, no API key:
+
+```sh
+make demo     # full pipeline on recorded fixtures — prints the PR comment, <60s
+make test     # the whole suite, offline (the fixtures double as the tests)
+```
+
+`make demo` runs the real pipeline against [recorded DataHub responses](tests/fixtures/recorded/)
+and writes the rendered comment to [`examples/`](examples/README.md). See three sample
+shapes there: a critical trained-on hit, a medium non-deployed hit, and a clean
+no-impact PR.
+
+**Live — the full loop against a real DataHub.** Needs Docker:
+
+```sh
+make demo-live   # stands up DataHub, seeds it, runs the pipeline WITH write-back
+```
+
+`make demo-live` sets `TOOLS_IS_MUTATION_ENABLED=true` for you, so the incidents,
+tags, and document actually land in DataHub (this is the #1 setup gotcha — see below).
+
+Regenerate the recorded fixtures against a live, seeded DataHub with
+`make record-fixtures` (they are generated, never hand-maintained — hand-maintained
+fixtures rot).
+
 ## Status
 
 Early build for the DataHub Agent Hackathon (deadline 2026-08-10). See
 [PROGRESS.md](PROGRESS.md) for current state and [CLAUDE.md](CLAUDE.md) for the
-architecture and design rules.
-
-## Quick start (once implemented)
-
-```sh
-make demo        # full pipeline on recorded fixtures, no DataHub, <60s
-make demo-live   # full pipeline against a real local DataHub
-```
+architecture and design rules. To validate a cold-start clone, follow
+[docs/CLEAN-MACHINE-CHECKLIST.md](docs/CLEAN-MACHINE-CHECKLIST.md).
 
 ## License
 

@@ -102,7 +102,18 @@ class DataHubClient:
     # -- construction ----------------------------------------------------- #
     @classmethod
     def from_env(cls, **kwargs: Any) -> DataHubClient:
-        """Construct from ``.env`` / environment settings."""
+        """Construct from ``.env`` / environment settings.
+
+        If ``BLASTRADAR_REPLAY`` names a recording file, a
+        :class:`~blastradar.datahub.replay.ReplayClient` is returned instead — the
+        whole pipeline then runs offline against recorded fixtures (``make demo``),
+        with no DataHub, network, or credentials. See ``datahub/replay.py``.
+        """
+        replay_path = os.environ.get("BLASTRADAR_REPLAY")
+        if replay_path:
+            from blastradar.datahub.replay import ReplayClient  # lazy: avoid import cycle
+            logger.info("BLASTRADAR_REPLAY set — serving DataHub calls from %s", replay_path)
+            return ReplayClient.from_file(replay_path, **kwargs)
         return cls(config_from_env(), **kwargs)
 
     def _ensure(self) -> None:

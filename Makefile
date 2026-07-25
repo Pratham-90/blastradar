@@ -1,27 +1,37 @@
-# Blastradar — task runner
+# Blastradar — task runner.
 #
-# Targets are stubs for now; each is implemented in the phase noted below.
-# See PROGRESS.md for phase status and CLAUDE.md for the architectural rules
-# these targets must honor (notably: `demo` runs offline in <60s, rule 3).
+# Two reproduction paths (architectural rule 3):
+#   make demo       — the whole pipeline on RECORDED fixtures. No DataHub, no network,
+#                     no API key. Under 60 seconds. This is the "stranger in 60s" path.
+#   make demo-live  — the whole pipeline against a REAL local DataHub (docker stack).
+#
+# See PROGRESS.md for build state and CLAUDE.md for the rules these targets honor.
 
-.PHONY: help demo demo-live test seed record-fixtures writeback-demo
+.PHONY: help demo examples demo-live test seed record-fixtures writeback-demo clean-examples
 
 PY := .venv/bin/python
 
 help:
 	@echo "Blastradar targets:"
-	@echo "  make demo             Run the full pipeline on recorded fixtures, no DataHub (<60s)"
-	@echo "  make demo-live        Run the full pipeline against a real local DataHub"
-	@echo "  make writeback-demo   Analyze the demo PR + write back to a live DataHub (needs seed)"
-	@echo "  make test             Run the pytest suite (fixtures double as tests)"
+	@echo "  make demo             Full pipeline on recorded fixtures — no DataHub/network/key, <60s"
+	@echo "  make examples         Regenerate all three sample reports under examples/ (md + json)"
+	@echo "  make demo-live        Full pipeline against a real local DataHub (stands up the docker stack)"
+	@echo "  make test             Run the pytest suite (offline — fixtures double as tests)"
 	@echo "  make seed             Seed a local DataHub with the demo ML lineage graph"
-	@echo "  make record-fixtures  Capture live DataHub responses into tests/fixtures"
+	@echo "  make record-fixtures  Re-record live DataHub responses into tests/fixtures/recorded/"
+	@echo "  make writeback-demo   Analyze the demo PR against a live DataHub (dry-run unless WRITE=1)"
 
-demo:  ## Offline demo against recorded fixtures (Phase 2)
-	@echo "TODO(Phase 2): run pipeline on tests/fixtures with no DataHub instance."
+# --- Offline path (recorded fixtures) --------------------------------------- #
+demo:  ## Offline demo against recorded fixtures — prints the comment, writes it to examples/
+	@$(PY) scripts/demo.py --scenario critical
 
-demo-live:  ## Live demo against a local DataHub (Phase 2)
-	@echo "TODO(Phase 2): run pipeline against a real local DataHub."
+examples:  ## Regenerate all three sample reports (critical / medium / clean) as md + json
+	@$(PY) scripts/demo.py --scenario all --quiet
+	@echo "Regenerated examples/*.md + examples/*.json"
+
+# --- Live path (real DataHub) ----------------------------------------------- #
+demo-live:  ## Stand up DataHub, seed, and run the pipeline with write-back enabled
+	@bash scripts/demo_live.sh
 
 # Phase 1D: analyze the demo PR and write findings back into a live local DataHub.
 # Dry-run by default (safe); `make writeback-demo WRITE=1` performs the writes.
@@ -34,11 +44,12 @@ writeback-demo:  ## Analyze the demo PR against a live DataHub
 	   --pr-url https://github.com/order-entry/analytics/pull/42 \
 	   --no-post-comment $(if $(WRITE),,--dry-run)
 
-test:  ## Run the pytest suite
+# --- Tests + fixtures ------------------------------------------------------- #
+test:  ## Run the pytest suite (offline)
 	$(PY) -m pytest -q
 
 seed:  ## Seed a local DataHub with the demo ML graph
 	$(PY) scripts/seed_ml_graph.py
 
-record-fixtures:  ## Record live DataHub responses into fixtures (Phase 2)
-	@echo "TODO(Phase 2): python scripts/record_fixtures.py"
+record-fixtures:  ## Re-record live DataHub responses into fixtures (needs a live, seeded DataHub)
+	$(PY) scripts/record_fixtures.py

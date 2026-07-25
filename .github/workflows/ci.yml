@@ -1,0 +1,50 @@
+# Blastradar CI — the offline test suite.
+#
+# The whole suite runs against RECORDED DataHub fixtures (tests/fixtures/recorded/),
+# so it needs no Docker, no DataHub, no network, and no API key (architectural rule 3
+# — the fixtures double as the tests). If this is green, `make demo` works for a
+# stranger cloning fresh. The live path (`make demo-live`) is intentionally NOT run in
+# CI — it needs the DataHub docker stack.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install (package + dev extras)
+        run: python -m pip install --upgrade pip && pip install -e ".[dev]"
+
+      - name: Run the test suite (offline — recorded fixtures)
+        run: pytest -q
+
+      - name: Smoke-test the offline demo (no DataHub / network / API key)
+        run: python scripts/demo.py --scenario all --no-write
+
+      - name: Verify committed examples are not stale
+        # test_examples_do_not_rot already asserts this; re-running the generator with
+        # --no-write and a clean `git status` is a belt-and-braces check.
+        run: |
+          python scripts/demo.py --scenario all
+          git diff --exit-code examples/ \
+            || (echo "::error::examples/ are stale — run 'make examples' and commit." && exit 1)

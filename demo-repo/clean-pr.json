@@ -1,0 +1,8 @@
+[
+  {
+    "path": "models/marts/customers.sql",
+    "status": "modified",
+    "before": "-- Customer dimension: one row per customer, enriched for analytics + ML feature builds.\n-- Materialized as ORDER_ENTRY_DB.analytics.customers and registered in DataHub.\nwith customers as (\n\n    select * from stg_customers\n\n)\n\nselect\n    c.customer_id,\n    c.first_name,\n    c.last_name,\n    c.email,\n    c.customer_since,\n    c.loyalty_tier,\n    c.credit_limit,\n    c.phone_number,\n    c.town_city,\n    c.country_id\nfrom customers c\n",
+    "after": "-- Customer dimension: one row per customer, enriched for analytics + ML feature builds.\n-- Materialized as ORDER_ENTRY_DB.analytics.customers and registered in DataHub.\n-- This PR drops the unused `phone_number` column (no ML feature depends on it).\nwith customers as (\n\n    select * from stg_customers\n\n)\n\nselect\n    c.customer_id,\n    c.first_name,\n    c.last_name,\n    c.email,\n    c.customer_since,\n    c.loyalty_tier,\n    c.credit_limit,\n    c.town_city,\n    c.country_id\nfrom customers c\n"
+  }
+]

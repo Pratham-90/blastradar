@@ -1,0 +1,8 @@
+[
+  {
+    "path": "models/marts/order_details.sql",
+    "status": "modified",
+    "before": "-- Order line-item detail: one row per order line, enriched for order analytics.\n-- Materialized as ORDER_ENTRY_DB.analytics.order_details and registered in DataHub,\n-- where its `order_total` column is the source of the `order_total_avg` feature in the\n-- `order_features` table (consumed by ltv_model_v1).\nselect\n    order_id,\n    customer_id,\n    order_total,                 -- source of order_features.order_total_avg\n    order_status,\n    order_date\nfrom raw_order_details\n",
+    "after": "-- Order line-item detail: one row per order line, enriched for order analytics.\n-- Materialized as ORDER_ENTRY_DB.analytics.order_details and registered in DataHub,\n-- where its `order_total` column is the source of the `order_total_avg` feature in the\n-- `order_features` table (consumed by ltv_model_v1).\nselect\n    order_id,\n    customer_id,\n    order_status,\n    order_date\nfrom raw_order_details\n"
+  }
+]

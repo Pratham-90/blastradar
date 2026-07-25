@@ -114,11 +114,16 @@ MODELS: dict[str, dict] = {
                        "hyper": {"max_depth": "6", "n_estimators": "400"},
                        "deployed": True,
                        "owner": "ml-platform", "tags": ["Tier1"]},
+    # UNOWNED + untagged, and NOT deployed. It consumes order_features (which only it
+    # consumes), so a change to an order_features source column reaches ltv_model_v1
+    # alone — a clean "no deployment, no escalation" case that scores a genuine MEDIUM
+    # (the Task 6 medium example). Kept unowned deliberately so severity escalation is
+    # exercised by the churn/reactivation models, not here.
     "ltv_model_v1": {"group": "ltv_model", "version": "1",
                      "tables": ["customer_features", "order_features"],
                      "metrics": {"rmse": "42.5", "mae": "31.0"},
                      "hyper": {"learning_rate": "0.05", "num_leaves": "64"},
-                     "owner": "analytics-ml", "tags": []},
+                     "owner": None, "tags": []},
     # DEPLOYED but trained on a DIFFERENT dataset (order_details, NOT customers).
     # It consumes customer_features — so it reads days_since_signup (derived from
     # customers.customer_since) at INFERENCE time without having been trained on it.
@@ -431,9 +436,18 @@ def emit_plan(graph, plan: dict) -> None:
         if mv["owner_urn"]:
             emit(urn, models.OwnershipClass(owners=[models.OwnerClass(
                 owner=mv["owner_urn"], type=models.OwnershipTypeClass.TECHNICAL_OWNER)]))
+        else:
+            # Explicitly emit an empty owners set so re-seeding a now-unowned model
+            # CLEARS any owner from a prior seed (aspect emits replace in place).
+            emit(urn, models.OwnershipClass(owners=[]))
         if mv["tag_urns"]:
             emit(urn, models.GlobalTagsClass(tags=[
                 models.TagAssociationClass(tag=t) for t in mv["tag_urns"]]))
+        else:
+            # Clear any leftover tags (e.g. a `pending-upstream-change` from a prior
+            # write-back run) so the seeded graph is a clean baseline — the write-back
+            # tag then appears only after a real `make demo-live` write.
+            emit(urn, models.GlobalTagsClass(tags=[]))
 
 
 def serializable(plan: dict) -> dict:

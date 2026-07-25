@@ -139,14 +139,14 @@
     }
   },
   "groups": {
-    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,ltv_model,PROD)": {
-      "name": "ltv_model"
+    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,churn_model,PROD)": {
+      "name": "churn_model"
     },
     "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,reactivation_model,PROD)": {
       "name": "reactivation_model"
     },
-    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,churn_model,PROD)": {
-      "name": "churn_model"
+    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,ltv_model,PROD)": {
+      "name": "ltv_model"
     }
   },
   "models": {
@@ -298,8 +298,8 @@
         "learning_rate": "0.05",
         "num_leaves": "64"
       },
-      "owner": "analytics-ml",
-      "owner_urn": "urn:li:corpGroup:analytics-ml",
+      "owner": null,
+      "owner_urn": null,
       "tags": [],
       "tag_urns": []
     },
