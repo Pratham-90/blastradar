@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: customers
+    description: >
+      Customer dimension. Upstream of the `customer_features` feature table in the
+      feature store; the churn, LTV, and reactivation models all read features
+      derived from these columns. Schema changes here have downstream ML blast radius.
+    columns:
+      - name: customer_id
+        description: Primary key.
+        tests: [unique, not_null]
+      - name: customer_since
+        description: >
+          Account creation date. Feeds `customer_features.days_since_signup`, a feature
+          used by churn_model_v1/v2/v3, ltv_model_v1, and reactivation_model_v1.
+          DO NOT drop or rename without migrating the feature pipeline first —
+          the change does not error, it silently nulls the feature.
+        tests: [not_null]
+      - name: loyalty_tier
+        description: Feeds `customer_features.loyalty_tier`.
+      - name: lifetime_order_count
+        description: Feeds `customer_features.lifetime_order_count`.
+
+  - name: orders
+    description: Orders fact, one row per order.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_id
+        tests: [not_null]

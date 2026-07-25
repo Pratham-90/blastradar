@@ -51,6 +51,24 @@ def _short(urn: str) -> str:
     return urn.split(",")[-2] if "," in urn else urn
 
 
+def severity(trained_on: bool, deployed: bool) -> str:
+    """Preview of the Phase 1C scorer. Authoritative logic will live in scoring.py.
+
+    trained_on × deployed:
+      trained + deployed      -> CRITICAL  (production model trained on the column)
+      deployed, not trained   -> HIGH      (reads the column live at inference)
+      trained, not deployed   -> MEDIUM    (trained on it, but not in production)
+      neither                 -> LOW
+    """
+    if deployed and trained_on:
+        return "CRITICAL"
+    if deployed:
+        return "HIGH"
+    if trained_on:
+        return "MEDIUM"
+    return "LOW"
+
+
 def blast_walk(client, graph, dataset_urn: str, column: str) -> list[dict]:
     """The real hybrid walk: column -> feature(s) -> model(s) -> deployment(s)."""
     chains: list[dict] = []
@@ -104,14 +122,21 @@ def main() -> int:
         logger.error("No impact chain found — check indexing / seed. ❌")
         return 1
 
+    from collections import Counter
+    for c in chains:
+        c["severity"] = severity(c["trained_on"], c["deployed"])
+    dist = Counter(c["severity"] for c in chains)
     deployed = [c for c in chains if c["deployed"]]
     logger.info("BLAST RADIUS (via live lineage + aspect reads): %d model(s) impacted, "
-                "%d deployed. ✅\n", len(chains), len(deployed))
+                "%d deployed. ✅", len(chains), len(deployed))
+    logger.info("Severity distribution: %s\n",
+                "  ".join(f"{s}={dist.get(s, 0)}" for s in ("CRITICAL", "HIGH", "MEDIUM", "LOW")))
     logger.info("  %s . %s   [dropped column]", _short(dt["source_dataset"]), dt["source_column"])
-    for c in chains:
+    for c in sorted(chains, key=lambda x: ("CRITICAL", "HIGH", "MEDIUM", "LOW").index(x["severity"])):
         logger.info("    └─> feature %s", _short(c["feature"]))
         tag = "TRAINED-ON" if c["trained_on"] else "inference-only"
-        logger.info("          └─> model %s  [%s]", _short(c["model"]), tag)
+        logger.info("          └─> model %s  [%s] -> %s",
+                    _short(c["model"]), tag, c["severity"])
         for d in c["deployments"]:
             logger.info("                └─> DEPLOYMENT %s  🚨 (live)", _short(d))
         if not c["deployments"]:
@@ -119,6 +144,11 @@ def main() -> int:
 
     logger.info("\nTerminal deployments reached: %s",
                 ", ".join(sorted({_short(d) for c in chains for d in c["deployments"]})) or "(none)")
+    exercised = {s for s in dist if dist[s]}
+    need = {"CRITICAL", "HIGH", "MEDIUM"}
+    logger.info("Severity branches exercised: %s%s",
+                ", ".join(sorted(exercised)),
+                "" if need <= exercised else f"  (MISSING: {', '.join(sorted(need - exercised))})")
     logger.info("This is exactly the traversal Phase 1B will automate.")
     return 0
 

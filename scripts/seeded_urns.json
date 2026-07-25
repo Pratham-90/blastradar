@@ -139,11 +139,14 @@
     }
   },
   "groups": {
-    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,churn_model,PROD)": {
-      "name": "churn_model"
-    },
     "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,ltv_model,PROD)": {
       "name": "ltv_model"
+    },
+    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,reactivation_model,PROD)": {
+      "name": "reactivation_model"
+    },
+    "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,churn_model,PROD)": {
+      "name": "churn_model"
     }
   },
   "models": {
@@ -176,7 +179,15 @@
       "hyper": {
         "max_depth": "5",
         "n_estimators": "200"
-      }
+      },
+      "owner": "ml-platform",
+      "owner_urn": "urn:li:corpGroup:ml-platform",
+      "tags": [
+        "Tier2"
+      ],
+      "tag_urns": [
+        "urn:li:tag:Tier2"
+      ]
     },
     "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v2,PROD)": {
       "name": "churn_model_v2",
@@ -207,7 +218,11 @@
       "hyper": {
         "max_depth": "6",
         "n_estimators": "300"
-      }
+      },
+      "owner": null,
+      "owner_urn": null,
+      "tags": [],
+      "tag_urns": []
     },
     "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v3,PROD)": {
       "name": "churn_model_v3",
@@ -241,7 +256,15 @@
       "hyper": {
         "max_depth": "6",
         "n_estimators": "400"
-      }
+      },
+      "owner": "ml-platform",
+      "owner_urn": "urn:li:corpGroup:ml-platform",
+      "tags": [
+        "Tier1"
+      ],
+      "tag_urns": [
+        "urn:li:tag:Tier1"
+      ]
     },
     "urn:li:mlModel:(urn:li:dataPlatform:mlflow,ltv_model_v1,PROD)": {
       "name": "ltv_model_v1",
@@ -274,7 +297,43 @@
       "hyper": {
         "learning_rate": "0.05",
         "num_leaves": "64"
-      }
+      },
+      "owner": "analytics-ml",
+      "owner_urn": "urn:li:corpGroup:analytics-ml",
+      "tags": [],
+      "tag_urns": []
+    },
+    "urn:li:mlModel:(urn:li:dataPlatform:mlflow,reactivation_model_v1,PROD)": {
+      "name": "reactivation_model_v1",
+      "version": "1",
+      "group_urn": "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,reactivation_model,PROD)",
+      "feature_urns": [
+        "urn:li:mlFeature:(customer_features,days_since_signup)",
+        "urn:li:mlFeature:(customer_features,lifetime_order_count)",
+        "urn:li:mlFeature:(customer_features,avg_order_value)",
+        "urn:li:mlFeature:(customer_features,is_active_30d)",
+        "urn:li:mlFeature:(customer_features,loyalty_tier)"
+      ],
+      "training_run_urn": "urn:li:dataProcessInstance:d09264c80bdce9aa40e5fdbd68358f0a",
+      "training_inlets": [
+        "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_details,PROD)"
+      ],
+      "deployment_urns": [
+        "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,reactivation_model_v1-prod,PROD)",
+        "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,reactivation_model_v1-canary,PROD)"
+      ],
+      "metrics": {
+        "auc": "0.75",
+        "precision": "0.68"
+      },
+      "hyper": {
+        "max_depth": "4",
+        "n_estimators": "150"
+      },
+      "owner": "growth-ml",
+      "owner_urn": "urn:li:corpGroup:growth-ml",
+      "tags": [],
+      "tag_urns": []
     }
   },
   "demo_drop_target": {
@@ -287,11 +346,14 @@
       "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v1,PROD)",
       "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v2,PROD)",
       "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v3,PROD)",
-      "urn:li:mlModel:(urn:li:dataPlatform:mlflow,ltv_model_v1,PROD)"
+      "urn:li:mlModel:(urn:li:dataPlatform:mlflow,ltv_model_v1,PROD)",
+      "urn:li:mlModel:(urn:li:dataPlatform:mlflow,reactivation_model_v1,PROD)"
     ],
     "downstream_deployments": [
       "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,churn_model_v3-prod,PROD)",
-      "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,churn_model_v3-canary,PROD)"
+      "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,churn_model_v3-canary,PROD)",
+      "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,reactivation_model_v1-prod,PROD)",
+      "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,reactivation_model_v1-canary,PROD)"
     ]
   }
 }

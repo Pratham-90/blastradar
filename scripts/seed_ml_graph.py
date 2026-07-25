@@ -93,25 +93,49 @@ TABLE_THEME = {"customer_features": "customer", "order_features": "order",
                "session_features": "order"}
 PREFERRED_SRC_PLATFORMS = ("dbt", "snowflake", "bigquery", "redshift", "postgres")
 
-# Which feature tables each model consumes.
+# Which feature tables each model consumes, plus VARIED ownership + tags so scoring
+# escalation and PR attribution aren't uniform:
+#   - `owner`: a CorpGroup name, or None (unowned — attribution must degrade gracefully)
+#   - `tags`:  tag names; a "Tier1"/"Tier2" tag drives tag-based severity escalation
 MODELS: dict[str, dict] = {
     "churn_model_v1": {"group": "churn_model", "version": "1",
                        "tables": ["customer_features", "session_features"],
                        "metrics": {"auc": "0.78", "recall": "0.71"},
-                       "hyper": {"max_depth": "5", "n_estimators": "200"}},
+                       "hyper": {"max_depth": "5", "n_estimators": "200"},
+                       "owner": "ml-platform", "tags": ["Tier2"]},
     "churn_model_v2": {"group": "churn_model", "version": "2",
                        "tables": ["customer_features", "session_features"],
                        "metrics": {"auc": "0.80", "recall": "0.74"},
-                       "hyper": {"max_depth": "6", "n_estimators": "300"}},
+                       "hyper": {"max_depth": "6", "n_estimators": "300"},
+                       "owner": None, "tags": []},  # UNOWNED — graceful attribution case
     "churn_model_v3": {"group": "churn_model", "version": "3",
                        "tables": ["customer_features", "session_features"],
                        "metrics": {"auc": "0.83", "recall": "0.77"},
                        "hyper": {"max_depth": "6", "n_estimators": "400"},
-                       "deployed": True},
+                       "deployed": True,
+                       "owner": "ml-platform", "tags": ["Tier1"]},
     "ltv_model_v1": {"group": "ltv_model", "version": "1",
                      "tables": ["customer_features", "order_features"],
                      "metrics": {"rmse": "42.5", "mae": "31.0"},
-                     "hyper": {"learning_rate": "0.05", "num_leaves": "64"}},
+                     "hyper": {"learning_rate": "0.05", "num_leaves": "64"},
+                     "owner": "analytics-ml", "tags": []},
+    # DEPLOYED but trained on a DIFFERENT dataset (order_details, NOT customers).
+    # It consumes customer_features — so it reads days_since_signup (derived from
+    # customers.customer_since) at INFERENCE time without having been trained on it.
+    # This exercises the "deployed + inference-only" severity branch (HIGH).
+    "reactivation_model_v1": {"group": "reactivation_model", "version": "1",
+                              "tables": ["customer_features"],
+                              "train_inputs": ["order_details"],  # override: excludes customers
+                              "metrics": {"auc": "0.75", "precision": "0.68"},
+                              "hyper": {"max_depth": "4", "n_estimators": "150"},
+                              "deployed": True,
+                              "owner": "growth-ml", "tags": []},  # owned, no tier tag
+}
+
+# Tag display metadata (name -> (description, colorHex)).
+TAG_META: dict[str, tuple[str, str]] = {
+    "Tier1": ("Tier-1 production model — highest business criticality", "#d93f0b"),
+    "Tier2": ("Tier-2 production model", "#fbca04"),
 }
 
 
@@ -185,9 +209,16 @@ def _themed_fallback(idx, theme_kw: str, used: set[str]):
     return None
 
 
-def resolve_feature_sources(graph) -> list[dict]:
+def _resolve_dataset(idx, table_kw: str) -> str | None:
+    """First dataset URN whose short table name matches a keyword."""
+    for short, (urn, _cols) in sorted(idx.items()):
+        if table_kw in short:
+            return urn
+    return None
+
+
+def resolve_feature_sources(idx) -> list[dict]:
     """Resolve each feature to a plausible real (dataset, column). Deterministic."""
-    idx = index_datasets(graph)
     if not idx:
         raise RuntimeError("No datasets with schema fields found. Is the datapack ingested?")
 
@@ -214,8 +245,9 @@ def resolve_feature_sources(graph) -> list[dict]:
 
 def build_plan(graph) -> dict:
     """Assign discovered columns to the 12 feature slots and compute all URNs."""
+    idx = index_datasets(graph)
     feature_names = [(t, f) for t, fs in FEATURE_TABLES.items() for f in fs]
-    sources = resolve_feature_sources(graph)
+    sources = resolve_feature_sources(idx)
 
     features: dict[str, dict] = {}
     for (table, feat), src in zip(feature_names, sources):
@@ -247,9 +279,16 @@ def build_plan(graph) -> dict:
     for model_name, spec in MODELS.items():
         model_urn = b.make_ml_model_urn(MODEL_PLATFORM, model_name, ENV)
         feat_urns = [u for u, fv in features.items() if fv["table"] in spec["tables"]]
-        source_datasets = sorted(
-            {features[u]["source_dataset"] for u in feat_urns}
-        )
+        if spec.get("train_inputs"):
+            # Trained on explicit datasets (may differ from consumed-feature sources),
+            # modelling a model that reads a feature at inference without training on it.
+            source_datasets = sorted(
+                {d for kw in spec["train_inputs"] if (d := _resolve_dataset(idx, kw))}
+            )
+        else:
+            source_datasets = sorted(
+                {features[u]["source_dataset"] for u in feat_urns}
+            )
         dpi = DataProcessInstance(
             id=f"{model_name}-training-run",
             orchestrator=MODEL_PLATFORM,
@@ -272,6 +311,10 @@ def build_plan(graph) -> dict:
             "deployment_urns": deployments,
             "metrics": spec["metrics"],
             "hyper": spec["hyper"],
+            "owner": spec.get("owner"),
+            "owner_urn": b.make_group_urn(spec["owner"]) if spec.get("owner") else None,
+            "tags": list(spec.get("tags") or []),
+            "tag_urns": [b.make_tag_urn(t) for t in (spec.get("tags") or [])],
             "_dpi": dpi,  # not serialized
         }
 
@@ -370,6 +413,27 @@ def emit_plan(graph, plan: dict) -> None:
                          for k, v in mv["hyper"].items()],
             trainingMetrics=[models.MLMetricClass(name=k, value=v)
                              for k, v in mv["metrics"].items()]))
+
+    # Tag + CorpGroup entities referenced by models (created once, idempotent).
+    referenced_tags = {t for mv in plan["models"].values() for t in mv["tags"]}
+    for tag in sorted(referenced_tags):
+        desc, color = TAG_META.get(tag, (f"Blastradar tag {tag}", None))
+        emit(b.make_tag_urn(tag), models.TagPropertiesClass(
+            name=tag, description=desc, colorHex=color))
+    referenced_owners = {mv["owner"] for mv in plan["models"].values() if mv["owner"]}
+    for grp in sorted(referenced_owners):
+        emit(b.make_group_urn(grp), models.CorpGroupInfoClass(
+            admins=[], members=[], groups=[], displayName=f"@{grp}",
+            description=f"Blastradar seed owner group @{grp}"))
+
+    # Ownership + tags per model (varied: some unowned, some tagged for escalation).
+    for urn, mv in plan["models"].items():
+        if mv["owner_urn"]:
+            emit(urn, models.OwnershipClass(owners=[models.OwnerClass(
+                owner=mv["owner_urn"], type=models.OwnershipTypeClass.TECHNICAL_OWNER)]))
+        if mv["tag_urns"]:
+            emit(urn, models.GlobalTagsClass(tags=[
+                models.TagAssociationClass(tag=t) for t in mv["tag_urns"]]))
 
 
 def serializable(plan: dict) -> dict:

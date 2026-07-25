@@ -1,0 +1,16 @@
+# Copy to ~/.dbt/profiles.yml (or set DBT_PROFILES_DIR). Snowflake is the warehouse
+# these models are registered under in DataHub. Blastradar itself does NOT need dbt
+# installed — it reads the model SQL — but the project compiles with a real profile.
+order_entry:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: TRANSFORMER
+      database: ORDER_ENTRY_DB
+      warehouse: TRANSFORMING
+      schema: analytics
+      threads: 4

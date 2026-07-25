@@ -1,0 +1,104 @@
+# Blastradar — ML blast-radius review for data PRs.
+#
+# On every pull request that touches a SQL / dbt model, Blastradar parses the diff,
+# walks DataHub's column-level lineage downstream to the ML models, scores the impact,
+# posts a single PR comment (updated in place on re-runs), and — when write-back is
+# enabled — records the finding in DataHub as an incident, a tag, and a document.
+#
+# ---------------------------------------------------------------------------------
+# SECRETS AND VARIABLES  (Settings → Secrets and variables → Actions)
+# ---------------------------------------------------------------------------------
+# REQUIRED secrets:
+#   DATAHUB_GMS_URL     Base URL of your DataHub GMS, e.g. https://datahub.mycorp.com
+#                       (or http://localhost:8080 for a local quickstart). Blastradar
+#                       reads lineage from here and writes incidents/tags/documents.
+#   DATAHUB_GMS_TOKEN   A DataHub personal access token (Settings → Access Tokens).
+#                       May be blank ONLY if your GMS runs with metadata auth disabled
+#                       (local quickstart). Needs write scope for write-back.
+#   ANTHROPIC_API_KEY   API key for the single Claude narration call. If omitted,
+#                       Blastradar falls back to fully-templated prose (still works).
+#
+# REQUIRED variable (Actions *variable*, not a secret — it is not sensitive but MUST
+# be set explicitly to turn on write-back):
+#   TOOLS_IS_MUTATION_ENABLED   Set to the string "true" to allow Blastradar to write
+#                       incidents/tags/documents into DataHub. Mutations are OFF by
+#                       default: if this is unset, the analysis and PR comment still
+#                       run, and the comment's write-back section explains that it was
+#                       skipped. *** This is the #1 setup gotcha — if incidents are not
+#                       appearing in DataHub, this variable is almost certainly unset. ***
+#
+# PROVIDED automatically by GitHub (no setup needed):
+#   GITHUB_TOKEN        Injected by Actions. Used to post/update the PR comment. The
+#                       `permissions:` block below grants it `pull-requests: write`.
+# ---------------------------------------------------------------------------------
+
+name: Blastradar
+
+on:
+  pull_request:
+    # Only run when a data model actually changes.
+    paths:
+      - '**/*.sql'
+      - '**/models/**/*.yml'
+      - '**/models/**/*.yaml'
+      - 'dbt_project.yml'
+
+# Least privilege: read the code, write PR comments. No other scopes.
+permissions:
+  contents: read
+  pull-requests: write
+
+# One in-flight run per PR; a new push cancels the previous run (and its half-written
+# comment) so the single Blastradar comment never races with itself.
+concurrency:
+  group: blastradar-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  blast-radius:
+    name: ML blast-radius review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the PR (base + head, so the diff resolves)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Blastradar
+        run: pip install .
+
+      # Optional: compile dbt so authored {{ ref() }}/{{ source() }} models become plain
+      # SQL Blastradar can parse. Skipped here for the self-contained demo (its models are
+      # already compiled). Uncomment for a real dbt project:
+      # - name: Compile dbt models
+      #   run: pip install dbt-snowflake && dbt compile
+
+      - name: Run Blastradar
+        env:
+          # --- DataHub (read lineage + write-back) ---
+          DATAHUB_GMS_URL: ${{ secrets.DATAHUB_GMS_URL }}
+          DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+          # --- LLM narration (optional; falls back to templates if absent) ---
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # --- Mutation kill-switch: MUST be "true" to write back to DataHub ---
+          TOOLS_IS_MUTATION_ENABLED: ${{ vars.TOOLS_IS_MUTATION_ENABLED }}
+          # --- PR comment (GITHUB_TOKEN is provided automatically) ---
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          blastradar analyze \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --pr-repo "${{ github.repository }}" \
+            --pr-number "${{ github.event.pull_request.number }}" \
+            --pr-url "${{ github.event.pull_request.html_url }}" \
+            --pr-sha "${{ github.event.pull_request.head.sha }}" \
+            --pr-title "${{ github.event.pull_request.title }}"
+        # Blastradar never hard-fails the build on a DataHub/LLM/comment hiccup — it
+        # degrades and still posts. Drop `--no-post-comment`/add `--no-write-back` to
+        # scope it down. To fail the check when critical impact is found, parse
+        # `--json` output in a follow-up step.

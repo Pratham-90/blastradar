@@ -1,0 +1,23 @@
+From: Blastradar Demo <demo@blastradar.dev>
+Subject: [PATCH] perf: drop unused customer_since from customers mart
+
+The customer_since column looked unused in the warehouse, so this PR removes
+it from the customers dimension to slim the model. (It is NOT unused: five ML
+models depend on features derived from it. This is exactly the change
+Blastradar is built to catch.)
+
+---
+ demo-repo/models/marts/customers.sql | 1 -
+ 1 file changed, 1 deletion(-)
+
+--- a/demo-repo/models/marts/customers.sql
++++ b/demo-repo/models/marts/customers.sql
+@@ -25,7 +25,6 @@
+     c.first_name,
+     c.last_name,
+     c.email,
+-    c.customer_since,                                   -- account-age driver for ML features
+     c.loyalty_tier,
+     c.credit_limit,
+     c.phone_number,
+

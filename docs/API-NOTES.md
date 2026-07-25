@@ -178,6 +178,36 @@ Cloud-only) — satisfies architectural rule 2. `[docs]`
 > New entities take ~minutes to appear in the **search/graph index** after emit
 > (aspect reads are immediately consistent; lineage/search lag). `[run]`
 
+### Phase 1B walker — additional live findings `[run]`
+
+- **`LineageResult` exposes no transform text.** Fields are `urn, type, hops,
+  direction, name, platform, paths`; `LineagePath` is `urn, entity_name, column_name`.
+  The dataset→feature edge returns `paths == []` (no column detail). Column-level
+  dataset→dataset edges DO populate `paths` with the `(entity_name, column_name)`
+  chain (e.g. `customers.customer_id → order_details.customer_id`).
+- **Transformation SQL is not populated in this datapack.** On `UpstreamLineageClass`,
+  both `Upstream.query` and `fineGrainedLineages[].transformOperation` are `None`
+  (upstream `type` is `COPY`). So "SQL at each hop" is unavailable here; the walker
+  reads it best-effort (`get_upstream_transform`) and gets None.
+- **`customer_since` has no column-level downstream datasets** (`get_lineage(
+  source_column="customer_since", downstream)` → `[]`); its only downstream is the
+  feature (dataset-level `DerivedFrom`). `customer_id` does have column-level
+  downstream (order_details).
+- **Search is fuzzy.** `get_urns_by_filter(entity_types=["dataset"], query="customers")`
+  returns ~23 hits (addresses, orders, …) across platforms (dbt, snowflake, s3,
+  postgres, powerbi). The resolver must filter to exact last-segment matches, then
+  rank by platform priority; `customers` has 4 exact matches → resolves to dbt.
+- **Ownership/tags** are seeded on models via `OwnershipClass(owners=[OwnerClass(
+  owner=<corpGroup urn>, type=OwnershipTypeClass.TECHNICAL_OWNER)])` and
+  `GlobalTagsClass(tags=[TagAssociationClass(tag=<tag urn>)])`; tag/group entities
+  created with `TagPropertiesClass` / `CorpGroupInfoClass`. `get_ownership`/`get_tags`
+  read them back (aspect reads — immediately consistent). Values are intentionally
+  varied (some models unowned) to exercise scoring escalation + attribution.
+- **DataProcessInstance inputs** read via `graph.get_aspect(dpi, DataProcessInstanceInputClass).inputs`
+  are full dataset URNs; exact string match against the changed dataset URN works
+  (case-preserved). `reactivation_v1`'s run inputs = `[order_details]` only → the
+  changed `customers` dataset is absent → inference-only. `[run]`
+
 ## Creating ML entities (mlModelGroup, mlModel, mlFeatureTable, mlFeature)
 
 **mlModelGroup / mlModel — new SDK classes** `[introspect]` + `[docs]`:
@@ -302,6 +332,61 @@ graph.emit_mcp(MetadataChangeProposalWrapper(entityUrn=str(dpi.urn),
 
 ## Write operations (incident, tag, document)
 
+> ✅ **Live-run update (Phase 1D completed against GMS v1.5.0.6).** All three
+> write-back paths were executed against the running quickstart. Three findings
+> corrected the plan below — read them before the pre-1D notes:
+>
+> **LIVE-CORRECTION 1 — incidents REJECT mlModel URNs `[run]`.** Both
+> `raiseIncident` and a raw `IncidentInfoClass` emit fail with HTTP 500 when the
+> resource is an `mlModel`:
+> `"Entity type for urn: urn:li:mlModel:(…) is not a valid destination for field
+> path: /entities/*"`. **Datasets ARE accepted.** So Blastradar anchors each
+> incident on the **changed dataset** (the entity that actually changed) and names
+> the affected model in the title/description. `GraphError` on emit, verified live.
+>
+> **LIVE-CORRECTION 2 — use a DETERMINISTIC incident URN via `emit_mcp`, NOT
+> `raiseIncident` `[run]`.** `raiseIncident` mints a random-UUID incident URN, and
+> this image exposes **no way to list an entity's incidents for a dedupe read** from
+> the SDK (`MLModel.incidents` GraphQL field is *undefined*; `Dataset.incidents`
+> *is* defined and is what the UI uses, but it is search-indexed = lag-prone, and
+> `IncidentsSummary` / `IncidentOn` relationships also lag or stay `None`). The
+> idempotent pattern that works: emit `IncidentInfoClass` on a **deterministic** URN
+> `urn:li:incident:blastradar-<sha1(pr|dataset)>` — re-emitting replaces in place,
+> and `graph.get_aspect(inc_urn, IncidentInfoClass)` reads it back with **zero lag**.
+> Verified: the emitted incident surfaces in the Dataset → Incidents tab within ~2s,
+> and two full runs leave exactly N incidents (no duplicates).
+> `IncidentInfoClass(type, entities, status, created, customType, title, description,
+> priority, assignees, source, startedAt)`; **priority is numeric, lower = more
+> urgent**: `0 CRITICAL, 1 HIGH, 2 MEDIUM, 3 LOW` (the GraphQL `IncidentPriority`
+> enum maps back from it). `IncidentStatusClass(state, lastUpdated, stage, message)`,
+> `AuditStampClass(time, actor, ...)`. `[run]`
+>
+> **LIVE-CORRECTION 3 — `Document(urn=…)` + fluent setters DOES NOT WORK `[run]`.**
+> `doc.set_title(...)` raises `ValueError: DocumentInfo aspect must be set. Use
+> Document.create_document() or Document.create_external_document()`. The working
+> constructor is the classmethod:
+> ```python
+> from datahub.sdk.document import Document
+> doc = Document.create_document(
+>     id=doc_id,                     # becomes urn:li:document:<id> — deterministic => idempotent
+>     title=..., text=markdown,      # full text is stored + indexed
+>     subtype="blastradar-finding",
+>     related_assets=[model_urn, dataset_urn],   # mlModel URNs ARE valid here (unlike incidents)
+>     custom_properties={"blastradar.pr": pr_key})
+> client.entities.upsert(doc)        # re-upsert replaces in place, no duplicate
+> ```
+> `create_document(*, id, title, text, status='PUBLISHED', show_in_global_context=True,
+> subtype=None, parent_document=None, related_assets=None, related_documents=None,
+> owners=None, tags=None, terms=None, domain=None, custom_properties=None, ...)`.
+> The `document` entity + `DocumentInfoClass` are registered on this image;
+> `DOCUMENT` is in the GraphQL `EntityType` enum. `[run]`
+>
+> **Tag write-back is exactly as documented, and merges cleanly `[run]`:** read
+> `get_tags`, union `make_tag_urn("pending-upstream-change")` in, re-emit
+> `GlobalTagsClass`. Existing tags (e.g. `Tier1`) are preserved; re-running is a
+> no-op set. All of the above is wrapped by `blastradar.datahub.writeback`, gated by
+> `TOOLS_IS_MUTATION_ENABLED=true`.
+
 **Incident — GraphQL `raiseIncident` (recommended, Core-supported)** `[docs]` + `[introspect]`:
 
 ```python
@@ -362,6 +447,33 @@ client.entities.upsert(doc)
 > GMS (it is a newer entity type). If not present on the image, fall back to
 > `InstitutionalMemoryClass` links or the entity `description`/`DocumentationClass`
 > aspect for the "saved document" write-back.
+
+## Anthropic SDK — narration (Phase 1C)  `[docs]` (claude-api skill) + `[introspect]`
+
+The single LLM call (`narrate.py`). Pinned model **`claude-opus-4-8`**, `anthropic==0.120.0`.
+
+```python
+import anthropic
+client = anthropic.Anthropic()   # resolves ANTHROPIC_API_KEY / auth profile
+resp = client.messages.create(
+    model="claude-opus-4-8",
+    max_tokens=1500,
+    system=system_prompt,                 # prompts/narrate.md
+    output_config={"effort": "low"},      # low-variance narration
+    messages=[{"role": "user", "content": payload_json}],
+)
+text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+```
+
+- **`temperature` is REMOVED on Opus 4.8** — sending it returns a 400. For low-variance
+  narration use `output_config={"effort": "low"}` and omit `thinking` (Opus 4.8 runs
+  without thinking when the field is absent). The task's "set temperature low" maps to
+  this. `[docs]`
+- **No extended thinking / `budget_tokens`** on Opus 4.8 (also 400). `[docs]`
+- Output is prose-only, keyed to asset ids so the model can't change the impact set
+  (rule 1). On missing key / API error / bad JSON → templated fallback (never crashes).
+- **Auth in this env:** none present (`ANTHROPIC_API_KEY` unset, no `ant` CLI), so the
+  live model path is UNTESTED here — the fallback is what runs. `[run]` (fallback only)
 
 ## MCP server tool names and arguments
 

@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: order_entry
+    database: ORDER_ENTRY_DB
+    schema: order_entry
+    description: Raw Order Entry OLTP tables, landed into the warehouse.
+    tables:
+      - name: customers
+        description: One row per customer account.
+        columns:
+          - name: customer_id
+            description: Primary key.
+            tests: [unique, not_null]
+          - name: customer_since
+            description: >
+              Account creation date. Drives account-age features used by the churn,
+              LTV, and reactivation models. Removing it silently breaks those features.
+      - name: orders
+        description: One row per placed order.
+      - name: order_items
+        description: One row per line item on an order.
