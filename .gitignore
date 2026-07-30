@@ -42,3 +42,8 @@ htmlcov/
 
 # DataHub local artifacts
 *.log
+
+# Brag demo: third-party audio assets carry their own licenses (not Apache-2.0),
+# so keep them out of the repo. The rendered brag.mp4 (which embeds them) is committed.
+brag-output/composition/assets/music/
+brag-output/composition/assets/sfx/

@@ -1,0 +1,5 @@
+Dropping a column doesn't throw an error. It just quietly feeds nulls to every ML model trained on it, and the predictions rot for weeks before anyone connects it back to the PR.
+
+Blastradar reviews the data PR before you merge: it walks DataHub's column-level lineage down to the models, ranks them by severity, and tells you which were *trained* on the column versus which only read it at inference.
+
+Know what breaks. Before you merge.

@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        margin: 0; width: 1920px; height: 1080px; overflow: hidden;
+        background: #0d1117;
+      }
+      body {
+        font-family: "Inter", sans-serif;
+        color: #e6edf3;
+        -webkit-font-smoothing: antialiased;
+      }
+      .mono {
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      /* ---- shared ---- */
+      .scene {
+        position: absolute; inset: 0;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+      }
+      .statement {
+        font-size: 76px; font-weight: 300; letter-spacing: 0.02em;
+        color: #e6edf3; text-align: center;
+      }
+
+      /* ---- scene 1: the diff ---- */
+      .editor {
+        width: 1280px; background: #161b22;
+        border: 1px solid #30363d; border-radius: 14px;
+        overflow: hidden;
+      }
+      .editor-bar {
+        display: flex; align-items: center; gap: 14px;
+        padding: 20px 30px; border-bottom: 1px solid #30363d;
+        background: #12171e;
+      }
+      .dot { width: 13px; height: 13px; border-radius: 50%; }
+      .editor-file {
+        font-size: 24px; color: #8b949e; margin-left: 12px;
+      }
+      .code { padding: 26px 0 30px; }
+      .line {
+        display: flex; align-items: center;
+        font-size: 29px; line-height: 1.95;
+        color: #8b949e; padding: 0 30px;
+        white-space: pre;
+      }
+      .gutter {
+        width: 46px; flex: none; color: #484f58;
+        font-size: 25px; text-align: center;
+      }
+      .line-code { position: relative; }
+      .tok-prop { color: #79c0ff; }
+      .tok-comment { color: #6e7681; }
+
+      #del-line { position: relative; }
+      #del-wash {
+        position: absolute; inset: 0 -30px;
+        background: rgba(248, 81, 73, 0.16);
+        border-left: 4px solid #f85149;
+        opacity: 0;
+      }
+      #del-strike {
+        position: absolute; left: 0; top: 52%;
+        height: 3px; background: #f85149;
+        width: 100%; transform-origin: left center;
+      }
+      #del-gutter { color: #f85149; opacity: 0; }
+
+      /* ---- scene 2: the chips ---- */
+      .chip-row {
+        display: flex; gap: 20px; justify-content: center;
+      }
+      .chip {
+        width: 356px; background: #161b22;
+        border: 1px solid #30363d; border-radius: 12px;
+        padding: 30px 26px;
+      }
+      .chip-name {
+        font-size: 25px; color: #e6edf3; margin-bottom: 22px;
+        letter-spacing: 0.01em;
+      }
+      .chip-status {
+        display: flex; align-items: center; gap: 12px;
+        font-size: 21px; color: #8b949e; margin-bottom: 20px;
+      }
+      .status-dot {
+        width: 11px; height: 11px; border-radius: 50%;
+        background: #3fb950;
+      }
+      .chip-val {
+        font-size: 27px; color: #e6edf3;
+      }
+      .chip-val .null { color: #6e7681; }
+
+      /* ---- scene 3: the PR comment ---- */
+      .pr {
+        width: 1420px; background: #161b22;
+        border: 1px solid #30363d; border-radius: 14px;
+        padding: 46px 54px;
+      }
+      .pr-head {
+        font-size: 46px; font-weight: 400; color: #e6edf3;
+        letter-spacing: 0.01em; margin-bottom: 40px;
+      }
+      .finding {
+        border-left: 5px solid #f85149;
+        background: rgba(248, 81, 73, 0.07);
+        border-radius: 0 10px 10px 0;
+        padding: 28px 34px; margin-bottom: 22px;
+      }
+      .finding.dim {
+        border-left-color: #6e7681;
+        background: rgba(110, 118, 129, 0.06);
+        opacity: 0.55;
+      }
+      .finding-top {
+        display: flex; align-items: baseline; gap: 16px;
+        font-size: 32px; margin-bottom: 16px;
+      }
+      .sev { color: #f85149; letter-spacing: 0.06em; }
+      .finding.dim .sev { color: #8b949e; }
+      .model { color: #e6edf3; }
+      .meta { font-size: 22px; color: #8b949e; }
+      .path {
+        display: flex; align-items: center; gap: 16px;
+        font-size: 26px; color: #8b949e; margin-top: 10px;
+      }
+      .hop { opacity: 0; }
+      .arrow { color: #8141ee; opacity: 0; }
+      #trained {
+        margin-top: 30px; font-size: 40px; font-weight: 400;
+        color: #f0f6fc; letter-spacing: 0.01em;
+      }
+      #trained .accent { color: #f85149; }
+
+      /* ---- scene 4: outro ---- */
+      .mini-row { display: flex; gap: 16px; justify-content: center; margin-bottom: 66px; }
+      .mini {
+        font-size: 19px; color: #757d87;
+        border: 1px solid #21262d; border-radius: 7px;
+        padding: 11px 17px;
+      }
+      #wordmark {
+        font-size: 118px; font-weight: 300; letter-spacing: 0.05em;
+        color: #f0f6fc;
+      }
+      #rule {
+        width: 300px; height: 3px; background: #7c3aed;
+        margin: 30px auto 0; transform-origin: center;
+      }
+      #tagline {
+        margin-top: 42px; font-size: 40px; font-weight: 300;
+        letter-spacing: 0.04em; color: #8b949e;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="20.5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- ============ SCENE 1 — the deletion (0 - 5.2s) ============ -->
+      <div class="scene clip" id="s1" data-start="0" data-duration="5.2" data-track-index="1">
+        <div class="editor" id="editor">
+          <div class="editor-bar">
+            <span class="dot" style="background:#f85149"></span>
+            <span class="dot" style="background:#d29922"></span>
+            <span class="dot" style="background:#3fb950"></span>
+            <span class="editor-file mono">models/marts/customers.sql</span>
+          </div>
+          <div class="code mono">
+            <div class="line s1-line"><span class="gutter"></span><span class="line-code">select</span></div>
+            <div class="line s1-line"><span class="gutter"></span><span class="line-code">    c.customer_id,</span></div>
+            <div class="line s1-line"><span class="gutter"></span><span class="line-code">    c.first_name,</span></div>
+            <div class="line s1-line"><span class="gutter"></span><span class="line-code">    c.email,</span></div>
+            <div class="line s1-line" id="del-line">
+              <div id="del-wash"></div>
+              <span class="gutter" id="del-gutter">-</span>
+              <span class="line-code" id="del-code"
+                >    <span class="tok-prop">c.customer_since</span>,   <span class="tok-comment"
+                  >-- account-age driver for ML features</span
+                ><span id="del-strike"></span
+              ></span>
+            </div>
+            <div class="line s1-line"><span class="gutter"></span><span class="line-code">    c.loyalty_tier,</span></div>
+            <div class="line s1-line"><span class="gutter"></span><span class="line-code">    c.credit_limit,</span></div>
+          </div>
+        </div>
+        <div class="statement" id="s1-line" style="margin-top:74px">No error. Nothing fails.</div>
+      </div>
+
+      <!-- ============ SCENE 2 — the silence (5.0 - 10.7s) ============ -->
+      <div class="scene clip" id="s2" data-start="5" data-duration="5.7" data-track-index="2">
+        <div class="chip-row">
+          <div class="chip s2-chip">
+            <div class="chip-name mono">churn_model_v3</div>
+            <div class="chip-status"><span class="status-dot"></span>serving</div>
+            <div class="chip-val mono">4.2</div>
+          </div>
+          <div class="chip s2-chip">
+            <div class="chip-name mono">reactivation_model_v1</div>
+            <div class="chip-status"><span class="status-dot"></span>serving</div>
+            <div class="chip-val mono">7.8</div>
+          </div>
+          <div class="chip s2-chip">
+            <div class="chip-name mono">churn_model_v1</div>
+            <div class="chip-status"><span class="status-dot"></span>serving</div>
+            <div class="chip-val mono">3.1</div>
+          </div>
+          <div class="chip s2-chip">
+            <div class="chip-name mono">churn_model_v2</div>
+            <div class="chip-status"><span class="status-dot"></span>serving</div>
+            <div class="chip-val mono">5.6</div>
+          </div>
+          <div class="chip s2-chip">
+            <div class="chip-name mono">ltv_model_v1</div>
+            <div class="chip-status"><span class="status-dot"></span>serving</div>
+            <div class="chip-val mono">2.9</div>
+          </div>
+        </div>
+        <div class="statement" id="s2-line" style="margin-top:86px; font-size:64px">
+          Five models keep serving. On nulls.
+        </div>
+      </div>
+
+      <!-- ============ SCENE 3 — the PR comment (10.5 - 16.7s) ============ -->
+      <div class="scene clip" id="s3" data-start="10.5" data-duration="6.2" data-track-index="3">
+        <div class="pr" id="pr">
+          <div class="pr-head" id="pr-head">
+            &#9888;&#65039; ML blast radius: 2 critical, 1 high, 2 medium
+          </div>
+
+          <div class="finding" id="f1">
+            <div class="finding-top">
+              <span class="sev">critical</span>
+              <span class="model mono">churn_model_v3</span>
+              <span class="meta">owner: @ml-platform &middot; tags: Tier1</span>
+            </div>
+            <div class="path mono">
+              <span class="hop" id="h1">customers.customer_since</span>
+              <span class="arrow" id="a1">&rarr;</span>
+              <span class="hop" id="h2">days_since_signup</span>
+              <span class="arrow" id="a2">&rarr;</span>
+              <span class="hop" id="h3">churn_model_v3</span>
+            </div>
+          </div>
+
+          <div class="finding dim" id="f2">
+            <div class="finding-top">
+              <span class="sev">critical</span>
+              <span class="model mono">reactivation_model_v1</span>
+              <span class="meta">reads it at inference only</span>
+            </div>
+          </div>
+
+          <div id="trained">Trained on <span class="accent">the changed column</span>.</div>
+        </div>
+      </div>
+
+      <!-- ============ SCENE 4 — outro (16.5 - 20.5s) ============ -->
+      <div class="scene clip" id="s4" data-start="16.5" data-duration="4" data-track-index="4">
+        <div class="mini-row" id="mini-row">
+          <div class="mini mono">churn_model_v3</div>
+          <div class="mini mono">reactivation_model_v1</div>
+          <div class="mini mono">churn_model_v1</div>
+          <div class="mini mono">churn_model_v2</div>
+          <div class="mini mono">ltv_model_v1</div>
+        </div>
+        <div id="wordmark">Blastradar</div>
+        <div id="rule"></div>
+        <div id="tagline">Know what breaks. Before you merge.</div>
+      </div>
+
+      <!-- ============ AUDIO ============ -->
+      <!-- bed: low and indifferent; steps down across the outro to land in near-silence -->
+      <audio
+        id="bg-music" class="clip"
+        data-start="0" data-duration="18.6" data-track-index="10" data-volume="0.26"
+        src="assets/music/happy-beats-business-moves-vol-9-by-ende-dot-app.mp3"
+      ></audio>
+      <audio
+        id="bg-music-tail" class="clip"
+        data-start="18.6" data-duration="1.0" data-media-start="18.6"
+        data-track-index="10" data-volume="0.13"
+        src="assets/music/happy-beats-business-moves-vol-9-by-ende-dot-app.mp3"
+      ></audio>
+      <audio
+        id="bg-music-tail2" class="clip"
+        data-start="19.6" data-duration="0.9" data-media-start="19.6"
+        data-track-index="10" data-volume="0.05"
+        src="assets/music/happy-beats-business-moves-vol-9-by-ende-dot-app.mp3"
+      ></audio>
+
+      <!-- sfx 1: the strike-through (dry, simulated edit) -->
+      <audio
+        id="sfx-strike" class="clip"
+        data-start="2.25" data-duration="0.056" data-track-index="11" data-volume="0.55"
+        src="assets/sfx/click2.ogg"
+      ></audio>
+      <!-- sfx 2: the flip to null — beat-locked 8.44s strong cue -->
+      <audio
+        id="sfx-null" class="clip"
+        data-start="8.44" data-duration="0.123" data-track-index="11" data-volume="0.5"
+        src="assets/sfx/bong_001.ogg"
+      ></audio>
+      <!-- sfx 3: the critical finding lands — beat-locked 12.65s strong cue -->
+      <audio
+        id="sfx-card" class="clip"
+        data-start="12.65" data-duration="0.183" data-track-index="11" data-volume="0.6"
+        src="assets/sfx/impactSoft_medium_001.ogg"
+      ></audio>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      /* =================== SCENE 1 — the deletion =================== */
+      tl.from("#editor", { opacity: 0, y: 26, scale: 0.985, duration: 0.7, ease: "power2.out" }, 0.15);
+      tl.from(".s1-line", { opacity: 0, x: -14, duration: 0.45, stagger: 0.07, ease: "power2.out" }, 0.5);
+
+      // the deletion applies — gutter marker, wash, then the strike
+      tl.to("#del-gutter", { opacity: 1, duration: 0.25, ease: "power2.out" }, 2.1);
+      tl.to("#del-wash", { opacity: 1, duration: 0.35, ease: "power2.out" }, 2.1);
+      tl.fromTo("#del-strike", { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power3.inOut" }, 2.25);
+      tl.to("#del-code", { opacity: 0.42, duration: 0.5, ease: "power2.out" }, 2.35);
+
+      // the hook line — fast in, then a long settled hold (~1.7s before the scene ends)
+      tl.from("#s1-line", { opacity: 0, y: 20, duration: 0.55, ease: "power2.out" }, 2.95);
+
+      tl.to("#s1", { opacity: 0, duration: 0.6, ease: "power1.inOut" }, 4.6);
+
+      /* =================== SCENE 2 — the silence =================== */
+      // beat-grid: chips at 5.28, 5.80, 6.34, 6.86, 7.40 (0.52s grid), then the full
+      // set HOLDS ~1.0s before the flip so the names clear the reading floor.
+      tl.from("#s2 .chip-row", { opacity: 0, duration: 0.4, ease: "power1.out" }, 5.1);
+      const chipBeats = [5.28, 5.8, 6.34, 6.86, 7.4];
+      chipBeats.forEach(function (t, i) {
+        tl.from("#s2 .chip:nth-child(" + (i + 1) + ")", {
+          opacity: 0, y: 22, duration: 0.42, ease: "power2.out",
+        }, t);
+      });
+
+      // beat-locked: 8.44s strong cue (0.99) — every value flips to null at once.
+      // Nothing turns red. The green simply drains out.
+      tl.to("#s2 .chip-val", { opacity: 0, duration: 0.18, ease: "power1.in" }, 8.44);
+      tl.add(function () {
+        const vals = document.querySelectorAll("#s2 .chip-val");
+        for (let i = 0; i < vals.length; i++) {
+          vals[i].innerHTML = '<span class="null">null</span>';
+        }
+      }, 8.62);
+      tl.to("#s2 .chip-val", { opacity: 1, duration: 0.3, ease: "power2.out" }, 8.62);
+      tl.to("#s2 .status-dot", { backgroundColor: "#484f58", duration: 0.5, ease: "power2.out" }, 8.44);
+      tl.to("#s2 .chip-name", { color: "#8b949e", duration: 0.5, ease: "power2.out" }, 8.44);
+
+      // caption: 6 words → ~1.8s floor; settles ~9.4 and holds to 10.5
+      tl.from("#s2-line", { opacity: 0, y: 18, duration: 0.5, ease: "power2.out" }, 8.9);
+
+      tl.to("#s2", { opacity: 0, duration: 0.55, ease: "power1.inOut" }, 10.15);
+
+      /* =================== SCENE 3 — the PR comment =================== */
+      tl.from("#pr", { opacity: 0, y: 30, scale: 0.99, duration: 0.6, ease: "power2.out" }, 10.5);
+      // beat-locked: 10.54s strong cue (1.00) — the blast-radius header lands
+      tl.from("#pr-head", { opacity: 0, y: 16, duration: 0.5, ease: "power2.out" }, 10.54);
+
+      tl.from("#f2", { opacity: 0, x: -18, duration: 0.45, ease: "power2.out" }, 11.6);
+
+      // beat-locked: 12.65s strong cue (1.00) — the critical finding arrives
+      tl.from("#f1", { opacity: 0, x: -24, duration: 0.55, ease: "power2.out" }, 12.65);
+
+      // the lineage path draws hop by hop
+      tl.to("#h1", { opacity: 1, duration: 0.3, ease: "power2.out" }, 13.35);
+      tl.to("#a1", { opacity: 1, duration: 0.25, ease: "power2.out" }, 13.7);
+      tl.to("#h2", { opacity: 1, duration: 0.3, ease: "power2.out" }, 13.9);
+      tl.to("#a2", { opacity: 1, duration: 0.25, ease: "power2.out" }, 14.25);
+      tl.to("#h3", { opacity: 1, color: "#f0f6fc", duration: 0.3, ease: "power2.out" }, 14.45);
+
+      // the differentiator — the longest hold in the film (~1.5s settled)
+      tl.from("#trained", { opacity: 0, y: 18, duration: 0.55, ease: "power2.out" }, 14.85);
+
+      tl.to("#s3", { opacity: 0, duration: 0.6, ease: "power1.inOut" }, 16.1);
+
+      /* =================== SCENE 4 — outro =================== */
+      tl.from("#mini-row", { opacity: 0, duration: 0.7, ease: "power1.out" }, 16.6);
+      tl.from("#wordmark", { opacity: 0, y: 22, duration: 0.8, ease: "power2.out" }, 16.85);
+      tl.fromTo("#rule", { scaleX: 0 }, { scaleX: 1, duration: 0.8, ease: "power3.inOut" }, 17.5);
+      tl.from("#tagline", { opacity: 0, y: 14, duration: 0.7, ease: "power2.out" }, 17.75);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
