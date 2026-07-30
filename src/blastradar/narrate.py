@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,6 +32,12 @@ logger = logging.getLogger(__name__)
 MODEL = "claude-opus-4-8"
 MAX_TOKENS = 1500
 _PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "narrate.md"
+
+# Optional Groq (OpenAI-compatible) provider. Selected at runtime when GROQ_API_KEY
+# is set; otherwise the Anthropic path (``MODEL``) is used. The deterministic core is
+# untouched — this only swaps which service writes the prose (architectural rule 1).
+GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_DEFAULT_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 
 @dataclass(frozen=True)
@@ -128,6 +135,50 @@ def _parse_llm_json(text: str) -> dict:
     return json.loads(text[start : end + 1])
 
 
+def _narration_from_json(data: dict, *, model: str) -> Narration:
+    """Map a parsed model reply into a :class:`Narration` (shared by all providers)."""
+    explanations = {
+        e["id"]: e["text"] for e in data.get("explanations", [])
+        if isinstance(e, dict) and "id" in e and "text" in e
+    }
+    return Narration(
+        change_summary=str(data.get("change_summary", "")).strip(),
+        explanations=explanations,
+        migration=str(data.get("migration", "")).strip(),
+        used_llm=True, model=model,
+    )
+
+
+def _narrate_with_groq(
+    change: ChangeEvent, scored: list[ScoredImpact], *, model: str,
+) -> Narration:
+    """Narrate via Groq's OpenAI-compatible chat API (httpx — no extra dependency)."""
+    import httpx  # lazy — only when the Groq path is actually taken
+
+    api_key = os.environ["GROQ_API_KEY"]
+    system_prompt = _PROMPT_PATH.read_text()
+    payload = json.dumps(_payload(change, scored), indent=2)
+
+    resp = httpx.post(
+        f"{GROQ_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={
+            "model": model,
+            "max_tokens": MAX_TOKENS,
+            "temperature": 0,  # low-variance narration; judges re-run and expect stability
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": payload},
+            ],
+        },
+        timeout=60.0,
+    )
+    resp.raise_for_status()
+    text = resp.json()["choices"][0]["message"]["content"]
+    return _narration_from_json(_parse_llm_json(text), model=model)
+
+
 def _narrate_with_llm(
     change: ChangeEvent, scored: list[ScoredImpact], *, model: str,
 ) -> Narration:
@@ -145,18 +196,7 @@ def _narrate_with_llm(
         messages=[{"role": "user", "content": payload}],
     )
     text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
-    data = _parse_llm_json(text)
-
-    explanations = {
-        e["id"]: e["text"] for e in data.get("explanations", [])
-        if isinstance(e, dict) and "id" in e and "text" in e
-    }
-    return Narration(
-        change_summary=str(data.get("change_summary", "")).strip(),
-        explanations=explanations,
-        migration=str(data.get("migration", "")).strip(),
-        used_llm=True, model=model,
-    )
+    return _narration_from_json(_parse_llm_json(text), model=model)
 
 
 def narrate(
@@ -173,8 +213,15 @@ def narrate(
     """
     if not use_llm:
         return _template_narration(change, scored, note="LLM disabled (--no-llm/--dry-run)")
+    # Provider select: Groq (OpenAI-compatible) when GROQ_API_KEY is set, else Anthropic.
+    use_groq = bool(os.environ.get("GROQ_API_KEY"))
+    if use_groq and model == MODEL:  # caller didn't pin an Anthropic model → use Groq default
+        model = GROQ_DEFAULT_MODEL
     try:
-        narration = _narrate_with_llm(change, scored, model=model)
+        narration = (
+            _narrate_with_groq(change, scored, model=model) if use_groq
+            else _narrate_with_llm(change, scored, model=model)
+        )
         # If the model skipped any asset, fill the gaps from the template.
         if narration.explanations.keys() != {asset_id(i) for i in range(len(scored))}:
             tmpl = _template_narration(change, scored)

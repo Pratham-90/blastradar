@@ -73,7 +73,7 @@ SCENARIOS: dict[str, Scenario] = {
 }
 
 
-def _run(scenario: Scenario, *, write: bool, quiet: bool) -> str:
+def _run(scenario: Scenario, *, write: bool, quiet: bool, use_llm: bool = False) -> str:
     # Point the client at the recording and force write-back OFF so the run is fully
     # offline and hermetic regardless of the caller's environment.
     os.environ["BLASTRADAR_REPLAY"] = str(RECORDING)
@@ -103,8 +103,11 @@ def _run(scenario: Scenario, *, write: bool, quiet: bool) -> str:
     if msg is not None:  # pragma: no cover - demo scenarios always produce output
         return msg
 
-    report = finalize(result, pr=pr, use_llm=False, client=client,
+    report = finalize(result, pr=pr, use_llm=use_llm, client=client,
                       do_writeback=True, dry_run=False)
+    if use_llm and not quiet:
+        src = report.data.get("narration_source", "template")
+        print(f"  narration source: {src}", file=sys.stderr)
 
     if write:
         EXAMPLES.mkdir(parents=True, exist_ok=True)
@@ -126,7 +129,13 @@ def main() -> int:
                     help="Print only; do not (re)write files under examples/.")
     ap.add_argument("--quiet", action="store_true",
                     help="Suppress the rendered comment on stdout (still writes files).")
+    ap.add_argument("--llm", action="store_true",
+                    help="Enable the single narration LLM call (Groq if GROQ_API_KEY is "
+                         "set, else Anthropic). Implies --no-write so the committed, "
+                         "deterministic examples/ are not overwritten with LLM prose.")
     args = ap.parse_args()
+    if args.llm:
+        args.no_write = True  # keep committed examples deterministic (templated)
 
     logging.basicConfig(level=logging.ERROR, format="%(levelname)s %(name)s: %(message)s")
 
@@ -145,7 +154,8 @@ def main() -> int:
             print(f"BLASTRADAR — offline demo (recorded fixtures, no DataHub / network / API key)")
             print(f"Scenario: {scenario.title}")
             print("=" * 78 + "\n")
-        markdown = _run(scenario, write=not args.no_write, quiet=args.quiet)
+        markdown = _run(scenario, write=not args.no_write, quiet=args.quiet,
+                        use_llm=args.llm)
         if not args.quiet:
             print(markdown)
     return 0

@@ -88,8 +88,13 @@ pre-scored, pre-ordered list keyed by asset id).
 Why this split: a judge (or a reviewer) runs this once and needs the same answer every
 time. An agent looping over graph traversal is not reproducible, and a
 non-deterministic impact report reads as broken. So the part that must be correct is
-code, and the LLM only does the part it's actually good at — language. With no
-`ANTHROPIC_API_KEY`, a fully-templated narration takes over and the tool still works.
+code, and the LLM only does the part it's actually good at — language.
+
+That single narration call picks its provider at runtime: **Groq** (OpenAI-compatible,
+default `llama-3.3-70b-versatile`) when `GROQ_API_KEY` is set, otherwise **Anthropic**
+`claude-opus-4-8` when `ANTHROPIC_API_KEY` is set — Groq wins if both are present. With
+neither key (or on `--no-llm`, or any API error), a fully-templated narration takes over,
+so the tool still produces the same structured comment with no LLM at all.
 
 More detail in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
