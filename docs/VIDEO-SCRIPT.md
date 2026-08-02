@@ -16,7 +16,7 @@ the whole thing can be one clean take.
       during recording can show nothing.
 - [ ] The PR comment is real and visible: either an actual GitHub PR with the Action run
       (set up ahead of time), **or** use `make demo`'s terminal output as the "comment"
-      (deterministic, offline, ~0.5s — the safe choice).
+      (deterministic, offline, ~1–2s — the safe choice).
 - [ ] Narration is the **deterministic templated** output (`make demo` / `--no-llm`). If
       you show LLM prose, it changes every run — record that panel once and don't re-run.
 - [ ] Terminal font large; browser zoom up; `demo-repo/demo-pr.patch` open in the editor.
@@ -50,7 +50,7 @@ blastradar analyze --changes demo-repo/demo-pr.json --pr-repo order-entry/analyt
 ```
 
 **⚠️ Retake risk:** if run live against DataHub, keep it snappy (~seconds). Safe
-alternative: `make demo` (offline fixtures, ~0.5s, identical output).
+alternative: `make demo` (offline fixtures, ~1–2s, identical output).
 
 ## 0:50–1:50 — The comment, and the trained-on finding
 
@@ -112,7 +112,7 @@ data ships no ML entities today."
 a production incident. `make demo` runs the whole thing in under a minute — no DataHub
 required."
 
-**On screen:** Terminal: `make demo` completing, the timer showing ~0.5s; end card with
+**On screen:** Terminal: `make demo` completing, the timer showing ~1–2s; end card with
 the repo URL and "Apache 2.0".
 
 **⚠️ Retake risk:** none — `make demo` is deterministic and fast.
@@ -124,3 +124,137 @@ the repo URL and "Apache 2.0".
 Editor (dbt model) → PR diff → terminal (`make demo`) → the rendered comment → DataHub UI
 (incident / tag / document, pre-indexed) → README architecture diagram → `make demo`
 timer. Total spoken content is paced for ~2:55.
+
+---
+
+# Recording cut (teleprompter)
+
+The tightened one-/two-take version. Read the **VO** column verbatim; do the **On screen**
+column exactly. Spoken total ≈ **2:14** of voiceover across ~334 words (≈150 wpm); with the
+DataHub pans and natural pauses this lands **~2:45–2:55 — under 3:00**. The two long beats
+(3 and 4) are flagged; if you run over, trim the *italic* clauses in beat 3 first.
+
+> **Claims verified against live `make demo` output (2026-08-02):** `2 critical, 1 high, 2
+> medium`; `churn_model_v3` = trained-on + IN_SERVICE; `reactivation_model_v1` =
+> inference-only; path `customers.customer_since → days_since_signup → churn_model_v3`;
+> write-back covers the 2 critical + 1 high + one document. All match the VO below.
+
+### Beat 1 — The silent break · 0:00–0:22 · ~22s / 55 words
+- **VO:** "A data engineer drops one column in a pull request — `customer_since`. Looks
+  harmless: an unused field, cleaned up. CI passes, it merges, nothing errors. But a
+  production churn model was *trained* on that column. The feature pipeline quietly serves
+  nulls, and the model rots for weeks before anyone blames this PR."
+- **On screen:** Editor on `demo-repo/demo-pr.patch` (or `demo-repo/models/marts/customers.sql`).
+  Cursor highlights the `c.customer_since,` line; delete it. Overlay a red subtitle:
+  *"No error. No test failure. Silent."*
+- **Retake risk:** none (static editor).
+
+### Beat 2 — Enter Blastradar · 0:22–0:40 · ~18s / 44 words
+- **VO:** "Blastradar reviews every data PR. It parses the SQL diff with sqlglot, pins the
+  exact changed column, then walks DataHub's *column-level* lineage downstream — hunting for
+  machine learning. One command, offline against recorded fixtures, in about a second."
+- **On screen:** Cut to terminal. Type and run:
+  ```sh
+  make demo
+  ```
+  Let it complete (the output is the comment you'll walk in beat 3).
+- **Retake risk:** none — `make demo` is deterministic, offline, ~1–2s. (No live DataHub call here.)
+
+### Beat 3 — The comment + the trained-on distinction · 0:40–1:30 · ~38s / 95 words · ⚠️ longest
+- **VO:** "Here's the comment. Two critical, one high, two medium. Top finding:
+  `customer_since` feeds the feature `days_since_signup`, which feeds `churn_model_v3` — and
+  the line that matters: *trained on the changed column*, and *in service*, serving live
+  traffic. That's the distinction no lineage view gives you — a model **trained** on the
+  column, drop it and it's silently wrong, versus one that only **reads** it at inference.
+  The second critical, `reactivation_model_v1`, is that inference-only case. Every finding
+  carries its lineage path and a one-line reason, fully deterministic — same answer every run."
+- **On screen:** the rendered `make demo` comment (or `examples/impact-critical-trained-on.md`).
+  Highlight **in this order**: (1) the `⚠️ ML blast radius: 2 critical, 1 high, 2 medium`
+  header; (2) the `churn_model_v3` block — box **"trained on the changed column"** and
+  **IN_SERVICE**; (3) the path `customers.customer_since → days_since_signup → churn_model_v3`;
+  (4) the `reactivation_model_v1` block — box **"reads it at inference only"**.
+- **Retake risk:** use the **templated** comment so wording matches the VO exactly. If over
+  time, cut the two *italic* "silently wrong / reads it at inference" clauses.
+
+### Beat 4 — Write-back into DataHub · 1:30–2:05 · ~18s VO + ~15s pans · ⚠️ index-lag beat
+- **VO:** "It closes the loop back into DataHub — open-source Core only. For every critical
+  and high model it opens an incident, tags it `pending-upstream-change`, and saves the full
+  report as a knowledge-base document. All idempotent — re-run it and nothing duplicates."
+- **On screen:** DataHub UI, three slow cuts, **all pre-loaded and already indexed**:
+  (1) `customers` dataset → **Incidents** tab, CRITICAL/HIGH badges; (2) `churn_model_v3` →
+  the **`pending-upstream-change`** tag; (3) the saved **document** listing the impacted models.
+- **Retake risk (highest):** index lag. Write-back must be done **and indexed** before you
+  record (see setup). **Never** perform write-back live on camera.
+
+### Beat 5 — Why it's trustworthy + OSS give-back · 2:05–2:35 · ~26s / 66 words
+- **VO:** "Why trust it? The lineage walk and the severity scoring are plain, deterministic
+  Python. The language model is called exactly once, at the very end, only to write the
+  explanation — it never decides what's impacted. And we're giving two things back to DataHub
+  open source: a skill that answers 'what ML breaks if I change this column?', and an
+  ml-showcase datapack, since the sample data ships no ML entities today."
+- **On screen:** README mermaid diagram, purple **Narrate — the ONE LLM call** node
+  highlighted; then a quick cut to the `skills/datahub-ml-impact/` and `contrib/ml-showcase/`
+  file trees.
+- **Retake risk:** none — static diagram + file tree.
+
+### Beat 6 — Close · 2:35–2:50 · ~12s / 30 words
+- **VO:** "Blastradar catches the silent ML break at review time — not six weeks into a
+  production incident. `make demo` runs the whole thing in under a minute, no DataHub required."
+- **On screen:** terminal `make demo` completing (timer shows ~1–2s); end card:
+  `github.com/Pratham-90/blastradar` + "Apache 2.0".
+- **Retake risk:** none.
+
+**Running total:** 22 + 18 + 38 + 33 + 26 + 12 ≈ **2:29** including beat-4 pans; end card to
+~2:45. Buffer to 3:00 absorbs pauses. If tight, drop beat 5's datapack sentence (~7s).
+
+---
+
+# Pre-record setup checklist (exact commands, in order)
+
+Do **all** of this before you hit record, so no live part stalls. macOS/Linux paths shown;
+on Windows use `.venv\Scripts\` and run `set PYTHONUTF8=1` first (else the emoji comment errors).
+
+**1. Populate DataHub (the slow, must-be-pre-staged part).** Start Docker Desktop, then:
+```sh
+make demo-live        # stands up DataHub, seeds the ML graph, runs the pipeline with
+                      # write-back — it sets TOOLS_IS_MUTATION_ENABLED=true for you
+```
+Let it finish, **then wait ~2–3 min for the search/graph index to catch up.**
+
+**2. Verify the three UI panels render NOW** (log in at `http://localhost:9002`, `datahub`/`datahub`):
+- `customers` dataset → **Incidents** tab shows the CRITICAL/HIGH incidents;
+- `churn_model_v3` shows the **`pending-upstream-change`** tag;
+- the knowledge-base **document** lists the impacted models.
+If any panel is empty, the index hasn't caught up — wait, don't record.
+
+**3. Stage the deterministic comment (the on-camera artifact):**
+```sh
+make demo             # prints the comment offline, ~1–2s; keyless, deterministic
+```
+
+**4. (Optional) Live single LLM call — only if you want to show it.** The primary path is
+**keyless**; skip this unless you specifically want the "one live call" shot. **Provider:**
+written for **Groq** (visibly fast on camera) — swap the one line for `ANTHROPIC_API_KEY` if
+you chose Anthropic. Record it **once** (prose varies run to run):
+```sh
+export GROQ_API_KEY=...    # Groq → fastest visible call;  or: export ANTHROPIC_API_KEY=...
+.venv/bin/python scripts/demo.py --scenario critical --llm   # --llm implies --no-write
+```
+
+**5. Editors / tabs / display:**
+- Editor open on `demo-repo/demo-pr.patch` (the one-line drop) and the `customers` model.
+- Terminal: **large font (18–22pt)**, cleared scrollback, working dir = repo root.
+- Browser zoom **125–150%**; pre-open tabs: (a) `customers` → Incidents, (b) `churn_model_v3`,
+  (c) the document, (d) README rendered at the mermaid diagram.
+
+---
+
+# Slow / non-deterministic moments — how to cut around them
+
+| Moment | Why it hurts | Pre-stage / cut |
+|---|---|---|
+| First `make demo-live` **image pull** | Several minutes of docker pulls | Run to completion **before** recording; never film the first run. |
+| **Index lag** after write-back (~2–3 min) | A cold click on Incidents/tag/document shows nothing | Do write-back in setup step 1; verify each panel renders (step 2) before rolling. Never write-back live. |
+| **LLM latency + drift** | A live call is slow and re-wording breaks VO sync | Show the **templated** comment (keyless). If you insist on a live call, use **Groq** and record once. |
+| `make demo` **timing** | Varies by machine (~1–2s here) | Don't promise a specific sub-second number on the end card; "under a minute / about a second" is safe. |
+| **Windows console encoding** | Emoji comment raises `UnicodeEncodeError` on cp1252 | If recording on Windows, `set PYTHONUTF8=1` before any `demo`/`pytest`. |
