@@ -52,15 +52,32 @@ medium non-deployed hit, and a clean no-impact PR — live in
 
 ## Try it in 60 seconds
 
-No DataHub, no network, no API key. Runs the real pipeline against recorded fixtures:
+No DataHub, no network, no API key. Runs the real pipeline against recorded fixtures.
+Needs **Python 3.11 or 3.12** (CI runs both; 3.13+ is untested — the pinned DataHub SDK
+may lag) and **GNU make**:
 
 ```sh
-python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-make demo        # prints the PR comment above; completes in ~0.5s
+python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # or python3.11
+make demo        # prints the PR comment above; completes in ~2s
 ```
 
 `make test` runs the whole suite the same way (offline — the recorded fixtures double
 as the tests).
+
+<details><summary><b>Windows, or no <code>make</code></b></summary>
+
+On Windows the venv lives under `.venv\Scripts\` (not `.venv/bin/`), and you must set
+`PYTHONUTF8=1` so the emoji-bearing report can print to the console. Without `make`, run
+the two targets directly — they are just the venv Python:
+
+```powershell
+python3.12 -m venv .venv
+.venv\Scripts\pip install -e ".[dev]"
+$env:PYTHONUTF8=1
+.venv\Scripts\python -m pytest -q                        # == make test
+.venv\Scripts\python scripts\demo.py --scenario critical  # == make demo
+```
+</details>
 
 ## How it works
 

@@ -98,13 +98,29 @@ make test              # still green against the fresh recording
 
 ---
 
-## Findings (fill this in, then hand it back)
+## Findings
+
+**Driven cold-clone run (automated, 2026-08-02).** Fresh `git clone` of the pushed repo
+into `/tmp/blastradar-clean`, then the offline path (Parts B–C) was executed:
+
+- Editable install (`pip install -e ".[dev]"`) — **OK**, `acryl-datahub==1.6.0.15` (matches pin).
+- `make test` equivalent — **74 passed**, offline (Docker not running, no network, no key).
+- `make demo` equivalent — **OK**, printed `2 critical, 1 high, 2 medium`, timed **~1.8 s**
+  (budget 60 s). Offline is enforced in code (replay client via `conftest`), so no
+  DataHub / network / API key / env var is needed — confirmed.
+
+Parts A, D, E (Docker wipe + `make demo-live`, second machine) are human-only — see the
+hand-off checklist in the session report. Rows below are the offline-path findings; all
+"FIXED" rows are doc-only edits (no feature code changed) committed with this update.
 
 | # | Step | What happened (fail / hang / ambiguous / contradicts README) | Suggested fix |
 |---|------|--------------------------------------------------------------|---------------|
-| 1 |      |                                                              |               |
-| 2 |      |                                                              |               |
-| 3 |      |                                                              |               |
+| 1 | B/C — README quick start | `python3.11` is hardcoded; on a machine with only 3.12/3.13 it's `command not found` (exit 127). It isn't actually required — pyproject needs `>=3.11` and CI runs **both** 3.11 and 3.12. | **FIXED**: state "Python 3.11 or 3.12", command `python3.12 … # or python3.11`. |
+| 2 | B/C — install path | `.venv/bin/pip` is POSIX-only; on Windows the path is `.venv\Scripts\`. No Windows guidance existed. | **FIXED**: added a "Windows, or no `make`" `<details>` block with the `Scripts\` paths. |
+| 3 | C — `make demo` / `make test` | `make` is required but never listed as a prerequisite and has no fallback; `make: command not found` where GNU make isn't installed (common on Windows, minimal macOS). | **FIXED**: README now names GNU make as a prereq and gives the direct no-`make` commands. |
+| 4 | C — `make demo` on a non-UTF-8 locale | Report prints `✅`/`→`; on Windows' cp1252 default this raises `UnicodeEncodeError` (exit 1). Green everywhere the default encoding is UTF-8 (macOS/Linux). | **FIXED (doc)**: README says set `PYTHONUTF8=1` on Windows. Recommended code follow-up: reconfigure stdout to UTF-8 in the CLI/demo entry point. |
+| 5 | C — timing claim | README said the demo "completes in ~0.5s"; measured **~1.8 s** cold on a fresh clone (still ≪ 60 s). | **FIXED**: softened to "~2s". |
+| 6 | C — `make demo` writes `examples/` | The demo rewrites `examples/*.md/.json`; on Windows it writes CRLF, leaving the clone's tree dirty after a run. Content is identical (rot-guarded by tests); cosmetic only. | Optional (not committed): add `.gitattributes` with `* text=auto eol=lf`. |
 
 When this table comes back, every row gets fixed and the checklist is re-run until it
 is clean end-to-end.
