@@ -35,6 +35,6 @@ make examples          # rewrites all six files from the recorded fixtures
 ```
 
 The narration here is the deterministic **templated** fallback (no API key needed),
-so the output is stable and the committed files don't churn. With an
-`ANTHROPIC_API_KEY` set, the live CLI (`make demo-live`) writes richer prose via the
-single Claude narration call.
+so the output is stable and the committed files don't churn. With a narration key set
+(`GROQ_API_KEY` — the default provider — or `ANTHROPIC_API_KEY`), the live CLI
+(`make demo-live`) writes richer prose via the single LLM narration call.

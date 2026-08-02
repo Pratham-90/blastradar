@@ -450,7 +450,11 @@ client.entities.upsert(doc)
 
 ## Anthropic SDK — narration (Phase 1C)  `[docs]` (claude-api skill) + `[introspect]`
 
-The single LLM call (`narrate.py`). Pinned model **`claude-opus-4-8`**, `anthropic==0.120.0`.
+The single LLM call (`narrate.py`) has two providers, chosen at runtime: **Groq**
+(OpenAI-compatible, the default when `GROQ_API_KEY` is set) and **Anthropic**. This section
+documents the Anthropic path — pinned model **`claude-opus-4-8`**, `anthropic==0.120.0`. The
+Groq path is a plain OpenAI-compatible `POST /chat/completions` over httpx (`temperature=0`),
+needing no SDK.
 
 ```python
 import anthropic

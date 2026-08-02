@@ -15,14 +15,14 @@
 #   DATAHUB_GMS_TOKEN   A DataHub personal access token (Settings → Access Tokens).
 #                       May be blank ONLY if your GMS runs with metadata auth disabled
 #                       (local quickstart). Needs write scope for write-back.
-#   ANTHROPIC_API_KEY   API key for the single Claude narration call.
-#   GROQ_API_KEY        API key for the single Groq narration call (OpenAI-compatible;
-#                       default model llama-3.3-70b-versatile).
-#                       Narration provider is auto-selected at runtime: GROQ_API_KEY
-#                       wins if set, else ANTHROPIC_API_KEY, else fully-templated prose.
-#                       Both are OPTIONAL — set whichever the repo has, or neither and
-#                       Blastradar narrates from templates (still works). If both are
-#                       set, Groq is used.
+#   GROQ_API_KEY        API key for the single narration call via Groq (OpenAI-compatible;
+#                       default model llama-3.3-70b-versatile). Groq is the DEFAULT
+#                       narration provider. Provider is auto-selected at runtime:
+#                       GROQ_API_KEY wins if set, else ANTHROPIC_API_KEY, else
+#                       fully-templated prose. Both are OPTIONAL — set whichever the repo
+#                       has, or neither and Blastradar narrates from templates (still works).
+#   ANTHROPIC_API_KEY   API key for the alternative narration provider (Anthropic Claude),
+#                       used only when GROQ_API_KEY is unset.
 #
 # REQUIRED variable (Actions *variable*, not a secret — it is not sensitive but MUST
 # be set explicitly to turn on write-back):
@@ -89,10 +89,10 @@ jobs:
           # --- DataHub (read lineage + write-back) ---
           DATAHUB_GMS_URL: ${{ secrets.DATAHUB_GMS_URL }}
           DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
-          # --- LLM narration (optional; provider auto-selected: Groq wins if set,
-          #     else Anthropic, else templated prose. Set whichever key the repo has) ---
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # --- LLM narration (optional; provider auto-selected: Groq is the default and
+          #     wins if set, else Anthropic, else templated prose. Set whichever key the repo has) ---
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # --- Mutation kill-switch: MUST be "true" to write back to DataHub ---
           TOOLS_IS_MUTATION_ENABLED: ${{ vars.TOOLS_IS_MUTATION_ENABLED }}
           # --- PR comment (GITHUB_TOKEN is provided automatically) ---

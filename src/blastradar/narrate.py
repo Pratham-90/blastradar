@@ -10,10 +10,11 @@ If no API is available or the call fails, we fall back to a fully-templated
 narration — the tool must still produce a useful comment with no LLM at all, so a
 judge without an API key still sees it work.
 
-Model is pinned to ``claude-opus-4-8``. ``temperature`` was removed on that model
-(sending it is a 400), so low-variance narration is requested via
-``output_config={"effort": "low"}`` plus no extended thinking. Verified against
-docs/API-NOTES (Anthropic SDK section).
+The provider is chosen at runtime (see ``narrate``): Groq (OpenAI-compatible) is the
+default when ``GROQ_API_KEY`` is set, otherwise Anthropic. Each provider has its own
+default model. Both request low-variance output: Groq via ``temperature=0``; the
+Anthropic path via ``output_config={"effort": "low"}`` (``temperature`` is removed on
+Opus 4.8 — sending it is a 400). Anthropic SDK specifics are verified in docs/API-NOTES.
 """
 
 from __future__ import annotations
@@ -29,15 +30,16 @@ from blastradar.models import ChangeEvent, ScoredImpact
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-opus-4-8"
 MAX_TOKENS = 1500
 _PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "narrate.md"
 
-# Optional Groq (OpenAI-compatible) provider. Selected at runtime when GROQ_API_KEY
-# is set; otherwise the Anthropic path (``MODEL``) is used. The deterministic core is
-# untouched — this only swaps which service writes the prose (architectural rule 1).
+# Two narration providers; the provider is chosen first (see ``narrate``) and each has
+# its own default model. Groq (OpenAI-compatible) is the default when GROQ_API_KEY is
+# set; otherwise Anthropic. Swapping the provider does not touch the deterministic core —
+# it only changes which service writes the prose (architectural rule 1).
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 GROQ_DEFAULT_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+ANTHROPIC_DEFAULT_MODEL = "claude-opus-4-8"
 
 
 @dataclass(frozen=True)
@@ -179,10 +181,10 @@ def _narrate_with_groq(
     return _narration_from_json(_parse_llm_json(text), model=model)
 
 
-def _narrate_with_llm(
+def _narrate_with_anthropic(
     change: ChangeEvent, scored: list[ScoredImpact], *, model: str,
 ) -> Narration:
-    import anthropic  # lazy — only when the LLM path is actually taken
+    import anthropic  # lazy — only when the Anthropic path is actually taken
 
     system_prompt = _PROMPT_PATH.read_text()
     payload = json.dumps(_payload(change, scored), indent=2)
@@ -204,23 +206,25 @@ def narrate(
     scored: list[ScoredImpact],
     *,
     use_llm: bool = True,
-    model: str = MODEL,
+    model: str | None = None,
 ) -> Narration:
     """Produce narration prose for the report. The single LLM call of the pipeline.
 
     With ``use_llm=False`` (or on any API/parse failure) returns a fully-templated
     narration so the tool still produces a useful comment with no LLM available.
+    ``model=None`` uses the active provider's default; pass a string to pin one.
     """
     if not use_llm:
         return _template_narration(change, scored, note="LLM disabled (--no-llm/--dry-run)")
-    # Provider select: Groq (OpenAI-compatible) when GROQ_API_KEY is set, else Anthropic.
+    # Choose the provider first: Groq (OpenAI-compatible) when GROQ_API_KEY is set, else
+    # Anthropic. Then use that provider's default model unless the caller pinned one.
     use_groq = bool(os.environ.get("GROQ_API_KEY"))
-    if use_groq and model == MODEL:  # caller didn't pin an Anthropic model → use Groq default
-        model = GROQ_DEFAULT_MODEL
+    if model is None:
+        model = GROQ_DEFAULT_MODEL if use_groq else ANTHROPIC_DEFAULT_MODEL
     try:
         narration = (
             _narrate_with_groq(change, scored, model=model) if use_groq
-            else _narrate_with_llm(change, scored, model=model)
+            else _narrate_with_anthropic(change, scored, model=model)
         )
         # If the model skipped any asset, fill the gaps from the template.
         if narration.explanations.keys() != {asset_id(i) for i in range(len(scored))}:

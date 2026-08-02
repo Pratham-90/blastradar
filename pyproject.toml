@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = { file = "LICENSE" }
 dependencies = [
     "acryl-datahub==1.6.0.15",  # pinned: verified in Phase 0; datahub.sdk is experimental
-    "anthropic==0.120.0",        # the single LLM narration call (Phase 1C); pinned Opus 4.8 client
+    "anthropic==0.120.0",        # narration via the Anthropic path (Groq is the default, over httpx); pinned Opus 4.8 client
     "sqlglot",
     "pydantic",
     "httpx",

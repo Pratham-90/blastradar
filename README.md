@@ -215,6 +215,16 @@ Honesty over overclaiming:
   `/sources/*`), so column precision into features is recovered from a
   `blastradar.source_column` custom property rather than a native column edge.
 
+## How this was built
+
+Blastradar was built with AI-assisted development (Claude Code) as part of an AI agent
+hackathon — using agentic tooling to build an agent is the point of the event, not
+something to hide. The author directed the architecture and every consequential design
+decision: the deterministic-core / single-LLM-narration split, the column-level lineage
+traversal, the trained-on-vs-inference severity distinction, and the two-tier
+reproducibility setup. The DataHub integration and the core traversal logic were designed
+against verified SDK behavior and covered by 74 tests, not blindly generated.
+
 ## License
 
 [Apache 2.0](LICENSE).
