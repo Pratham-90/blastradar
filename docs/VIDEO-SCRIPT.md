@@ -232,12 +232,12 @@ If any panel is empty, the index hasn't caught up — wait, don't record.
 make demo             # prints the comment offline, ~1–2s; keyless, deterministic
 ```
 
-**4. (Optional) Live single LLM call — only if you want to show it.** The primary path is
-**keyless**; skip this unless you specifically want the "one live call" shot. **Provider:**
-written for **Groq** (visibly fast on camera) — swap the one line for `ANTHROPIC_API_KEY` if
-you chose Anthropic. Record it **once** (prose varies run to run):
+**4. (Optional) Live single LLM call — Groq.** The **primary take is keyless** (the templated
+comment from step 3); do this only for the bonus "one live call" shot. **Set your Groq key**,
+then run with `--llm` (provider is Groq — narration auto-selects Groq whenever `GROQ_API_KEY`
+is set). Record it **once** (prose varies run to run):
 ```sh
-export GROQ_API_KEY=...    # Groq → fastest visible call;  or: export ANTHROPIC_API_KEY=...
+export GROQ_API_KEY=...    # required for this shot — Groq gives the fastest visible call
 .venv/bin/python scripts/demo.py --scenario critical --llm   # --llm implies --no-write
 ```
 
