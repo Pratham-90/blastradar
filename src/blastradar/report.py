@@ -60,13 +60,23 @@ class RenderedReport:
         return json.dumps(self.data, indent=indent)
 
 
-def _readable_path(scored: ScoredImpact) -> list[str]:
-    change = scored.asset.paths[0].change if scored.asset.paths else None
+def _path_names(scored: ScoredImpact, path) -> list[str]:
+    """Readable node names for one lineage path: source column → … → terminal."""
+    change = path.change
     start = f"{change.table}.{change.column}" if change else short_name(scored.asset.urn)
-    names = [start]
-    if scored.asset.paths:
-        names.extend(short_name(h.to_urn) for h in scored.asset.paths[0].hops)
-    return names
+    return [start, *(short_name(h.to_urn) for h in path.hops)]
+
+
+def _readable_path(scored: ScoredImpact) -> list[str]:
+    """Names for the DEEPEST path (most hops) — representative when several exist.
+
+    For a single-path asset this is exactly that one path, so output is unchanged.
+    """
+    paths = scored.asset.paths
+    if not paths:
+        return [short_name(scored.asset.urn)]
+    deepest = max(paths, key=lambda p: len(p.hops))
+    return _path_names(scored, deepest)
 
 
 def _owner_label(scored: ScoredImpact) -> str:
@@ -110,7 +120,15 @@ def _impact_block(scored: ScoredImpact, narration: Narration, aid: str) -> str:
             if a.deployments else "not deployed")
     trained = "trained on the changed column" if scored.trained_on else "reads it at inference only"
     lines.append(f"- Deployment: {depl}  ·  Training: {trained}")
-    lines.append("- Path: " + " → ".join(f"`{n}`" for n in _readable_path(scored)))
+    if len(a.paths) <= 1:
+        lines.append("- Path: " + " → ".join(f"`{n}`" for n in _readable_path(scored)))
+    else:
+        # Multiple distinct lineage routes reach this model (e.g. a diamond) — show
+        # every one, deepest first, so the "all paths preserved" behaviour is visible.
+        ordered = sorted(a.paths, key=lambda p: (-len(p.hops), p.urns))
+        lines.append(f"- Paths ({len(a.paths)} distinct — every route preserved):")
+        for p in ordered:
+            lines.append("    - " + " → ".join(f"`{n}`" for n in _path_names(scored, p)))
 
     prose = narration.explanations.get(aid)
     if prose:

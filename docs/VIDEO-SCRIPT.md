@@ -160,21 +160,29 @@ DataHub pans and natural pauses this lands **~2:45–2:55 — under 3:00**. The 
   Let it complete (the output is the comment you'll walk in beat 3).
 - **Retake risk:** none — `make demo` is deterministic, offline, ~1–2s. (No live DataHub call here.)
 
-### Beat 3 — The comment + the trained-on distinction · 0:40–1:30 · ~38s / 95 words · ⚠️ longest
-- **VO:** "Here's the comment. Two critical, one high, two medium. Top finding:
-  `customer_since` feeds the feature `days_since_signup`, which feeds `churn_model_v3` — and
-  the line that matters: *trained on the changed column*, and *in service*, serving live
-  traffic. That's the distinction no lineage view gives you — a model **trained** on the
-  column, drop it and it's silently wrong, versus one that only **reads** it at inference.
-  The second critical, `reactivation_model_v1`, is that inference-only case. Every finding
-  carries its lineage path and a one-line reason, fully deterministic — same answer every run."
-- **On screen:** the rendered `make demo` comment (or `examples/impact-critical-trained-on.md`).
-  Highlight **in this order**: (1) the `⚠️ ML blast radius: 2 critical, 1 high, 2 medium`
-  header; (2) the `churn_model_v3` block — box **"trained on the changed column"** and
-  **IN_SERVICE**; (3) the path `customers.customer_since → days_since_signup → churn_model_v3`;
-  (4) the `reactivation_model_v1` block — box **"reads it at inference only"**.
-- **Retake risk:** use the **templated** comment so wording matches the VO exactly. If over
-  time, cut the two *italic* "silently wrong / reads it at inference" clauses.
+### Beat 3 — The comment: trained-on + the deep multi-hop path · 0:40–1:45 · ~48s / ~120 words · ⚠️ longest — the highlight
+- **VO:** "Here's the comment — two critical, one high, two medium. Look at `churn_model_v3`:
+  it's *trained on the changed column* and *in service*, serving live traffic — the
+  distinction no plain lineage view gives you. Trained on it, drop it and it's silently
+  wrong; versus only reading it at inference, like `reactivation_model_v1`. Now the part
+  that shows the engine: `churn_model_v3` is reached by **two distinct lineage routes** from
+  the same dropped column. One is direct. The other runs four hops deep — `customer_since`
+  into `customer_engagement_daily`, into `customer_ml_features`, into the derived feature
+  `customer_tenure_bucket`, into the model. The walker traced that whole chain and kept
+  **both** paths — column-level, multi-hop, fully deterministic."
+- **On screen:** the rendered `make demo` comment. Highlight **in this order**: (1) the
+  `⚠️ ML blast radius: 2 critical, 1 high, 2 medium` header; (2) `churn_model_v3` — box
+  **"trained on the changed column"** + **IN_SERVICE**; (3) **the `Paths (2 distinct — every
+  route preserved):` block** — the money shot; run the cursor along the DEEP line first:
+  `customers.customer_since → customer_engagement_daily → customer_ml_features →
+  customer_tenure_bucket → churn_model_v3`, then the short line beneath it; (4)
+  `reactivation_model_v1` — box **"reads it at inference only"**.
+- **The exact line to call attention to:** the first bullet under `Paths (2 distinct …)` on
+  `churn_model_v3` — the four-hop chain above. That one line is the proof the traversal is
+  deep *and* preserves every route (the diamond). Pause on it for a beat.
+- **Retake risk:** use the **templated** comment so the wording matches the VO. Needs the
+  re-recorded fixtures (deep chain present) — verify the `Paths (2 distinct …)` block renders
+  before you record; on the old fixtures `churn_model_v3` shows a single `Path:` line instead.
 
 ### Beat 4 — Write-back into DataHub · 1:30–2:05 · ~18s VO + ~15s pans · ⚠️ index-lag beat
 - **VO:** "It closes the loop back into DataHub — open-source Core only. For every critical
@@ -204,8 +212,9 @@ DataHub pans and natural pauses this lands **~2:45–2:55 — under 3:00**. The 
   `github.com/Pratham-90/blastradar` + "Apache 2.0".
 - **Retake risk:** none.
 
-**Running total:** 22 + 18 + 38 + 33 + 26 + 12 ≈ **2:29** including beat-4 pans; end card to
-~2:45. Buffer to 3:00 absorbs pauses. If tight, drop beat 5's datapack sentence (~7s).
+**Running total:** 22 + 18 + 48 + 33 + 26 + 12 ≈ **2:39** including beat-4 pans; end card to
+~2:52. Still under 3:00, but the deeper Beat 3 eats the buffer — if tight, drop beat 5's
+datapack sentence (~7s) and trim Beat 3's *italic* "silently wrong / inference" clause.
 
 ---
 

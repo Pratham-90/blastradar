@@ -15,6 +15,11 @@ Creates on top of existing datasets:
   - 2 mlModelDeployments attached ONLY to churn_model_v3 (deployed/not distinction)
   - 4 dataProcessInstance training runs (MLFLOW_TRAINING_RUN subtype), one per
     model version, each with input datasets, hyperparameters, and metrics
+  - Deep-chain extension: 2 analytics datasets (customer_engagement_daily,
+    customer_ml_features) linked by COLUMN-LEVEL lineage downstream of `customers`,
+    plus 1 derived feature (customer_tenure_bucket) in a customer_tenure_features
+    table consumed by churn_model_v3 — a genuinely deep, multi-path route so the
+    walker's multi-hop / multi-path strength is visible in `make demo` / the video.
 
 Prints a summary + which source columns were chosen (and why) and writes all URNs
 to scripts/seeded_urns.json for later phases.
@@ -147,6 +152,38 @@ TAG_META: dict[str, tuple[str, str]] = {
     "Tier2": ("Tier-2 production model", "#fbca04"),
 }
 
+# --- Deep-chain extension (multi-hop demo path) ----------------------------- #
+# Adds realistic feature-engineering DEPTH downstream of the `customers` mart so the
+# walker's multi-hop / multi-path strength is visible on screen — WITHOUT touching the
+# walker. Two analytics datasets are created downstream of `customers`, linked by
+# COLUMN-LEVEL (fineGrained) lineage, and one derived feature (consumed only by
+# churn_model_v3) hangs off the deepest one. That gives churn_model_v3 a SECOND, deeper
+# route from customers.customer_since (the diamond); the existing short route stays.
+# All additive — nothing existing is modified except churn_model_v3 gaining one feature.
+DEEP_BASE_TABLE_KW = "customers"          # existing mart to root the chain on
+DEEP_BASE_COLUMN = "customer_since"       # the flagship demo column
+DEEP_ANALYTICS_PREFIX = "b2fd91.ORDER_ENTRY_DB.analytics"  # matches order_history/order_details
+# Ordered chain of derived datasets; each reads the previous one's column via
+# column-level lineage. (short_name, out_column, native_type, upstream_column).
+DEEP_CHAIN: list[tuple[str, str, str, str]] = [
+    ("customer_engagement_daily", "days_since_signup", "NUMBER", DEEP_BASE_COLUMN),
+    ("customer_ml_features",      "tenure_bucket",     "STRING", "days_since_signup"),
+]
+DEEP_FEATURE_TABLE = "customer_tenure_features"
+DEEP_FEATURE = "customer_tenure_bucket"   # sources customer_ml_features.tenure_bucket
+DEEP_FEATURE_MODEL = "churn_model_v3"     # also consumes it → the diamond terminal
+DBT_PLATFORM = "dbt"
+
+_NATIVE_TYPE_CLASS = {  # native type -> schema-field type class factory
+    "NUMBER": models.NumberTypeClass, "STRING": models.StringTypeClass,
+    "TEXT": models.StringTypeClass, "DATE": models.DateTypeClass,
+}
+
+
+def _field_type(native: str):
+    factory = _NATIVE_TYPE_CLASS.get(native.upper(), models.StringTypeClass)
+    return models.SchemaFieldDataTypeClass(type=factory())
+
 
 def _platform_of(urn: str) -> str:
     marker = "dataPlatform:"
@@ -252,6 +289,66 @@ def resolve_feature_sources(idx) -> list[dict]:
     return picks
 
 
+def extend_with_deep_chain(plan: dict, idx) -> None:
+    """Add a deep, column-level-linked dataset chain + a derived feature (additive).
+
+    Roots on the discovered ``customers`` mart, creates the :data:`DEEP_CHAIN` datasets
+    with fineGrained (column-level) upstream lineage, hangs a derived feature off the
+    deepest one, and wires that feature into ``churn_model_v3`` — giving it a second,
+    deeper path (the diamond). The existing short path is untouched. Degrades gracefully
+    (logs + skips) if the base mart isn't present in this datapack.
+    """
+    base_urn = _resolve_dataset(idx, DEEP_BASE_TABLE_KW)
+    if base_urn is None:
+        logger.warning("deep-chain: base table %r not found; skipping deep extension.",
+                       DEEP_BASE_TABLE_KW)
+        return
+
+    datasets: list[dict] = []
+    upstream_urn = base_urn
+    for short, out_col, native, up_col in DEEP_CHAIN:
+        ds_urn = b.make_dataset_urn(DBT_PLATFORM, f"{DEEP_ANALYTICS_PREFIX}.{short}", ENV)
+        datasets.append({
+            "urn": ds_urn, "name": short,
+            "fields": [(out_col, native)],
+            "upstream_dataset": upstream_urn,
+            "fine_grained": [(
+                b.make_schema_field_urn(upstream_urn, up_col),
+                b.make_schema_field_urn(ds_urn, out_col),
+            )],
+        })
+        upstream_urn = ds_urn
+    plan["datasets"] = datasets
+
+    # Derived feature on the DEEPEST dataset (customer_ml_features.tenure_bucket).
+    deepest = datasets[-1]
+    feat_col, feat_native = DEEP_CHAIN[-1][1], DEEP_CHAIN[-1][2]
+    feat_urn = b.make_ml_feature_urn(DEEP_FEATURE_TABLE, DEEP_FEATURE)
+    plan["features"][feat_urn] = {
+        "table": DEEP_FEATURE_TABLE, "name": DEEP_FEATURE,
+        "source_dataset": deepest["urn"], "source_column": feat_col,
+        "source_native_type": feat_native,
+        "schema_field_urn": b.make_schema_field_urn(deepest["urn"], feat_col),
+        "keyish": False,
+    }
+    ft_urn = b.make_ml_feature_table_urn(FEATURE_PLATFORM, DEEP_FEATURE_TABLE)
+    plan["feature_tables"][ft_urn] = {"name": DEEP_FEATURE_TABLE, "feature_urns": [feat_urn]}
+
+    # Wire the derived feature into churn_model_v3 (the diamond terminal).
+    model_urn = b.make_ml_model_urn(MODEL_PLATFORM, DEEP_FEATURE_MODEL, ENV)
+    if model_urn in plan["models"]:
+        fu = plan["models"][model_urn]["feature_urns"]
+        if feat_urn not in fu:
+            fu.append(feat_urn)
+    else:
+        logger.warning("deep-chain: model %r not in plan; derived feature not wired.",
+                       DEEP_FEATURE_MODEL)
+
+    logger.info("deep-chain: +%d datasets (%s), +1 feature %s -> %s (diamond on %s)",
+                len(datasets), " -> ".join(d["name"] for d in datasets),
+                DEEP_FEATURE, DEEP_FEATURE_TABLE, DEEP_FEATURE_MODEL)
+
+
 def build_plan(graph) -> dict:
     """Assign discovered columns to the 12 feature slots and compute all URNs."""
     idx = index_datasets(graph)
@@ -352,13 +449,15 @@ def build_plan(graph) -> dict:
         "downstream_deployments": downstream_deploys,
     }
 
-    return {
+    plan = {
         "features": features,
         "feature_tables": feature_tables,
         "groups": groups,
         "models": model_plan,
         "demo_drop_target": demo_target,
     }
+    extend_with_deep_chain(plan, idx)  # additive depth for the multi-hop demo path
+    return plan
 
 
 def iter_mcps(plan: dict, ts: int):
@@ -370,6 +469,25 @@ def iter_mcps(plan: dict, ts: int):
     """
     def mcp(entity_urn: str, aspect):
         return MetadataChangeProposalWrapper(entityUrn=entity_urn, aspect=aspect)
+
+    # Deep-chain datasets: schema + column-level (fineGrained) upstream lineage. Emitted
+    # first so the downstream feature/lineage references resolve. Additive only.
+    for ds in plan.get("datasets", []):
+        yield mcp(ds["urn"], models.SchemaMetadataClass(
+            schemaName=ds["name"], platform=f"urn:li:dataPlatform:{DBT_PLATFORM}",
+            version=0, hash="", platformSchema=models.OtherSchemaClass(rawSchema=""),
+            fields=[models.SchemaFieldClass(
+                fieldPath=fp, type=_field_type(nt), nativeDataType=nt)
+                for fp, nt in ds["fields"]]))
+        yield mcp(ds["urn"], models.UpstreamLineageClass(
+            upstreams=[models.UpstreamClass(
+                dataset=ds["upstream_dataset"],
+                type=models.DatasetLineageTypeClass.TRANSFORMED)],
+            fineGrainedLineages=[models.FineGrainedLineageClass(
+                upstreamType=models.FineGrainedLineageUpstreamTypeClass.FIELD_SET,
+                upstreams=[u],
+                downstreamType=models.FineGrainedLineageDownstreamTypeClass.FIELD,
+                downstreams=[d]) for u, d in ds["fine_grained"]]))
 
     # Groups
     for urn, g in plan["groups"].items():

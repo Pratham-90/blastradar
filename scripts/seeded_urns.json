@@ -107,6 +107,15 @@
       "source_native_type": "DATE",
       "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.order_history,PROD),as_of_date)",
       "keyish": false
+    },
+    "urn:li:mlFeature:(customer_tenure_features,customer_tenure_bucket)": {
+      "table": "customer_tenure_features",
+      "name": "customer_tenure_bucket",
+      "source_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.customer_ml_features,PROD)",
+      "source_column": "tenure_bucket",
+      "source_native_type": "STRING",
+      "schema_field_urn": "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.customer_ml_features,PROD),tenure_bucket)",
+      "keyish": false
     }
   },
   "feature_tables": {
@@ -135,6 +144,12 @@
         "urn:li:mlFeature:(session_features,session_count_7d)",
         "urn:li:mlFeature:(session_features,avg_session_duration)",
         "urn:li:mlFeature:(session_features,last_session_recency)"
+      ]
+    },
+    "urn:li:mlFeatureTable:(urn:li:dataPlatform:feast,customer_tenure_features)": {
+      "name": "customer_tenure_features",
+      "feature_urns": [
+        "urn:li:mlFeature:(customer_tenure_features,customer_tenure_bucket)"
       ]
     }
   },
@@ -236,7 +251,8 @@
         "urn:li:mlFeature:(customer_features,loyalty_tier)",
         "urn:li:mlFeature:(session_features,session_count_7d)",
         "urn:li:mlFeature:(session_features,avg_session_duration)",
-        "urn:li:mlFeature:(session_features,last_session_recency)"
+        "urn:li:mlFeature:(session_features,last_session_recency)",
+        "urn:li:mlFeature:(customer_tenure_features,customer_tenure_bucket)"
       ],
       "training_run_urn": "urn:li:dataProcessInstance:c1458ab6b232c1994d8b11964e45efa3",
       "training_inlets": [
@@ -355,5 +371,41 @@
       "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,reactivation_model_v1-prod,PROD)",
       "urn:li:mlModelDeployment:(urn:li:dataPlatform:sagemaker,reactivation_model_v1-canary,PROD)"
     ]
-  }
+  },
+  "datasets": [
+    {
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.customer_engagement_daily,PROD)",
+      "name": "customer_engagement_daily",
+      "fields": [
+        [
+          "days_since_signup",
+          "NUMBER"
+        ]
+      ],
+      "upstream_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD)",
+      "fine_grained": [
+        [
+          "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.order_entry_db.order_entry.customers,PROD),customer_since)",
+          "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.customer_engagement_daily,PROD),days_since_signup)"
+        ]
+      ]
+    },
+    {
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.customer_ml_features,PROD)",
+      "name": "customer_ml_features",
+      "fields": [
+        [
+          "tenure_bucket",
+          "STRING"
+        ]
+      ],
+      "upstream_dataset": "urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.customer_engagement_daily,PROD)",
+      "fine_grained": [
+        [
+          "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.customer_engagement_daily,PROD),days_since_signup)",
+          "urn:li:schemaField:(urn:li:dataset:(urn:li:dataPlatform:dbt,b2fd91.ORDER_ENTRY_DB.analytics.customer_ml_features,PROD),tenure_bucket)"
+        ]
+      ]
+    }
+  ]
 }
