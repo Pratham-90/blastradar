@@ -195,6 +195,19 @@ Honesty over overclaiming:
   column propagation, cycles, and a hop cap, but the *demo* graph doesn't exercise deep
   dataset chains (the ecommerce sample carries no `transformOperation`/query text, so
   per-hop SQL isn't shown).
+- **Demo-graph depth is a deliberate scope choice.** The bundled graph exercises a single
+  direct column → feature → model path on purpose — it keeps the offline `make demo` fast,
+  deterministic, and dependency-free. The traversal engine itself is more general: a
+  deterministic breadth-first walk with a configurable hop cap and a cycle guard that
+  de-duplicates entities while keeping every distinct path to a terminal. The test suite
+  verifies the multi-hop traversal and hop cap (`test_hop_cap_blocks_deep_terminal`) and
+  cycle termination on dataset-to-dataset column lineage (`test_cycle_safety_terminates`);
+  the multiple-distinct-paths-to-one-model case (a "diamond") is preserved by construction
+  but is not exercised by the bundled graph or asserted by a dedicated test. Deepening the
+  graph to dramatize these paths was descoped for the hackathon timeframe — and loading a
+  richer base locally is currently blocked on Windows by a DataHub datapack-loader bug
+  (`KeyError: 'Did not find a registered class for c'`,
+  [datahub#11107](https://github.com/datahub-project/datahub/issues/11107)).
 - **SDK lineage crashes on non-dataset downstreams.** `datahub.sdk`'s `get_lineage`
   raises `InvalidUrnError` when a dataset has a **chart** downstream (it parses the
   chart URN as a dataset). Affected columns can't currently be walked; Blastradar
