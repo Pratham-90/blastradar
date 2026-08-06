@@ -125,11 +125,14 @@ def _escalation_reason(asset: ImpactedAsset, *, deployed: bool) -> str | None:
     explicit statement that this asset is high-stakes.
 
     Ownership escalates only when the model also has an **active deployment**.
-    Ownership alone is a near-universal property of production models, so treating
-    it as an independent escalator fired on almost every asset and collapsed HIGH
-    into CRITICAL — which drowned out the distinction the tool exists to make
-    (trained-on vs. inference-only). Requiring "owned *and* serving traffic" keeps
-    the signal meaningful: a shelved model with an owner stays at its base severity.
+    Ownership alone is a near-universal property of production models, so treating it
+    as an independent escalator bumped almost every model up one level regardless of
+    whether it was actually serving — including shelved models that aren't live (e.g. a
+    trained-but-undeployed owned model jumped MEDIUM → HIGH). That over-escalated across
+    the board and muddied the distinction the tool exists to make (trained-on vs.
+    inference-only). Requiring "owned *and* serving traffic" keeps the signal meaningful:
+    a shelved owned model stays at its base severity, while a deployed one still escalates
+    (so a deployed, inference-only, owned model still reaches CRITICAL — deliberately).
     """
     hit = [simple_name(t) for t in asset.tags if simple_name(t).lower() in ESCALATION_TAGS]
     if hit:
