@@ -61,7 +61,7 @@ time make demo
 - [ ] Completes in **under 60 seconds** (note the real time): ____
 - [ ] Needs **no** DataHub, **no** network, **no** API key. (Try it with your
       network off / airplane mode to be sure.)
-- [ ] Prints a readable PR comment (2 critical, 1 high, 2 medium) to the terminal.
+- [ ] Prints a readable PR comment (2 critical, 3 medium) to the terminal.
 - [ ] Wrote / matches `examples/impact-critical-trained-on.md`.
 - [ ] `make test` is green with Docker NOT running:
       ```sh
@@ -105,7 +105,7 @@ into `/tmp/blastradar-clean`, then the offline path (Parts B–C) was executed:
 
 - Editable install (`pip install -e ".[dev]"`) — **OK**, `acryl-datahub==1.6.0.15` (matches pin).
 - `make test` equivalent — **74 passed**, offline (Docker not running, no network, no key).
-- `make demo` equivalent — **OK**, printed `2 critical, 1 high, 2 medium`, timed **~1.8 s**
+- `make demo` equivalent — **OK**, printed `2 critical, 3 medium`, timed **~1.8 s**
   (budget 60 s). Offline is enforced in code (replay client via `conftest`), so no
   DataHub / network / API key / env var is needed — confirmed.
 

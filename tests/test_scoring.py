@@ -68,10 +68,18 @@ def test_inactive_deployment_is_not_active():
     assert s.deployed is False
 
 
-def test_escalation_by_owner():
-    s = score_asset(_model("m", trained=True, owners=[_group("analytics-ml")]))
-    assert s.severity is Severity.HIGH  # MEDIUM base, +1 for owner
+def test_escalation_by_owner_requires_an_active_deployment():
+    # Owned AND serving: HIGH base (deployed, inference-only) escalates to CRITICAL.
+    s = score_asset(_model("m", deployed=True, trained=False, owners=[_group("analytics-ml")]))
+    assert s.severity is Severity.CRITICAL
     assert any("owner group set" in r for r in s.reasons)
+
+
+def test_owner_alone_does_not_escalate_a_shelved_model():
+    # Ownership is near-universal; on a non-deployed model it must NOT escalate.
+    s = score_asset(_model("m", trained=True, owners=[_group("analytics-ml")]))
+    assert s.severity is Severity.MEDIUM
+    assert not any("owner group set" in r for r in s.reasons)
 
 
 def test_escalation_by_tier1_tag():

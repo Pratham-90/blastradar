@@ -8,7 +8,7 @@ fails if a committed file drifts from what the pipeline produces.
 
 | Report | Input PR | Shape | Top severity |
 |---|---|---|---|
-| [impact-critical-trained-on](impact-critical-trained-on.md) | [`demo-repo/demo-pr.json`](../demo-repo/demo-pr.json) — drop `customers.customer_since` | A deployed model was **trained** on the dropped column | 🔴 2 critical, 1 high, 2 medium |
+| [impact-critical-trained-on](impact-critical-trained-on.md) | [`demo-repo/demo-pr.json`](../demo-repo/demo-pr.json) — drop `customers.customer_since` | A deployed model was **trained** on the dropped column | 🔴 2 critical, 3 medium |
 | [impact-medium-non-deployed](impact-medium-non-deployed.md) | [`demo-repo/medium-pr.json`](../demo-repo/medium-pr.json) — drop `order_details.order_total` | One impacted model, **not in production** yet | 🟡 1 medium |
 | [impact-clean-no-impact](impact-clean-no-impact.md) | [`demo-repo/clean-pr.json`](../demo-repo/clean-pr.json) — drop `customers.phone_number` | No ML feature/model depends on the column | ✅ no impact |
 

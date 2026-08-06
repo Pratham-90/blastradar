@@ -35,11 +35,17 @@ def _analyze(changes_path: Path):
 
 
 def test_critical_scenario_shape() -> None:
+    # churn_model_v3       CRITICAL — deployed + trained on the column (tag Tier1, capped)
+    # reactivation_model_v1 CRITICAL — deployed inference-only, escalated (owned + serving)
+    # churn_model_v1        MEDIUM  — trained but NOT deployed; ownership alone no longer
+    #                                 escalates a shelved model
+    # churn_model_v2        MEDIUM  — not deployed, unowned
+    # ltv_model_v1          MEDIUM  — not deployed, unowned
     result = _analyze(REPO / "demo-repo" / "demo-pr.json")
     counts = Counter(s.severity for s in score(result))
     assert counts[Severity.CRITICAL] == 2
-    assert counts[Severity.HIGH] == 1
-    assert counts[Severity.MEDIUM] == 2
+    assert counts[Severity.HIGH] == 0
+    assert counts[Severity.MEDIUM] == 3
 
 
 def test_medium_scenario_is_single_non_deployed() -> None:

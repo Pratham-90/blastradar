@@ -99,9 +99,11 @@ incidents, tags, and documents. No Cloud-only features on the critical path.
 - **Incidents anchor on the dataset.** This GMS build rejects `mlModel` URNs as an incident
   destination, so the incident is opened on the changed dataset with the model named in the
   title/body; the saved document links each model directly.
-- **Severity escalation is potent.** Owning a model escalates its severity one level, which
-  can push a deployed inference-only model to critical — faithful to the rule and fully
-  traceable in every finding's `reasons`, but a candidate to revisit.
+- **Ownership escalates only on a live deployment.** A Tier1/Critical tag escalates on its
+  own; ownership escalates only when the model is also actively deployed (ownership alone is
+  near-universal and was collapsing HIGH into CRITICAL). A deployed, inference-only, owned
+  model still reaches critical by design — every escalation is traceable in each finding's
+  `reasons`.
 - **PR posting** was validated against a mock GitHub API in the build environment (real
   list/POST/PATCH over the actual httpx path, local server); in CI the same code hits
   github.com.

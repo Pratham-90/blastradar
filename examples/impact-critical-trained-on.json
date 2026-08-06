@@ -12,8 +12,8 @@
   ],
   "summary": {
     "critical": 2,
-    "high": 1,
-    "medium": 2,
+    "high": 0,
+    "medium": 3,
     "low": 0
   },
   "analysis_incomplete": false,
@@ -87,7 +87,7 @@
       ],
       "reasons": [
         "mlModel with an active deployment (inference-time consumption only)",
-        "escalated one level: owner group set (growth-ml)"
+        "escalated one level: owner group set (growth-ml) on an active deployment"
       ],
       "explanation": "`reactivation_model_v1` reads this column at inference time and is currently deployed and serving predictions. Dropping or renaming the column does not fail the pipeline; the feature silently emits nulls or stale values, so predictions degrade without any error surfacing."
     },
@@ -95,7 +95,7 @@
       "id": "a3",
       "model": "churn_model_v1",
       "urn": "urn:li:mlModel:(urn:li:dataPlatform:mlflow,churn_model_v1,PROD)",
-      "severity": "HIGH",
+      "severity": "MEDIUM",
       "deployed": false,
       "trained_on": true,
       "deployments": [],
@@ -112,8 +112,7 @@
         "churn_model_v1"
       ],
       "reasons": [
-        "mlModel with no active deployment",
-        "escalated one level: owner group set (ml-platform)"
+        "mlModel with no active deployment"
       ],
       "explanation": "`churn_model_v1` was trained on this column and is not currently deployed. Dropping or renaming the column does not fail the pipeline; the feature silently emits nulls or stale values, so predictions degrade without any error surfacing."
     },
@@ -190,20 +189,6 @@
       {
         "action": "tag",
         "target": "reactivation_model_v1",
-        "status": "disabled",
-        "entity_urn": null,
-        "detail": "tag `pending-upstream-change`"
-      },
-      {
-        "action": "incident",
-        "target": "churn_model_v1",
-        "status": "disabled",
-        "entity_urn": "urn:li:incident:blastradar-d2517156474e9146",
-        "detail": "anchored on the changed dataset"
-      },
-      {
-        "action": "tag",
-        "target": "churn_model_v1",
         "status": "disabled",
         "entity_urn": null,
         "detail": "tag `pending-upstream-change`"

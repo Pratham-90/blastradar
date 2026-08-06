@@ -96,7 +96,9 @@ Deterministic, first-match-wins (full table in the reference file):
 | 🟡 medium | Model depends on the column but has no active deployment |
 | ⚪ low | No ML downstream |
 
-Then one-level escalation if the model carries a `Tier1`/`Critical` tag or has an owner.
+Then one-level escalation if the model carries a `Tier1`/`Critical` tag, or has an owner
+**and** an active deployment (ownership alone is near-universal, so it does not escalate a
+shelved model).
 A result that is **empty but resolved** is a genuine all-clear; a result marked
 **incomplete** (unresolved column / truncated walk) is *not* — never report it as safe.
 

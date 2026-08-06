@@ -65,7 +65,7 @@ lineage path and a one-line reason for its severity — it's fully deterministic
 get the same answer every time."
 
 **On screen:** The rendered comment. Slowly scroll/highlight in order:
-1. the `⚠️ ML blast radius: 2 critical, 1 high, 2 medium` header,
+1. the `⚠️ ML blast radius: 2 critical, 3 medium` header,
 2. the `churn_model_v3` block — box-highlight **"trained on the changed column"** and
    **IN_SERVICE**,
 3. the path `customers.customer_since → days_since_signup → churn_model_v3`,
@@ -134,10 +134,10 @@ column exactly. Spoken total ≈ **2:14** of voiceover across ~334 words (≈150
 DataHub pans and natural pauses this lands **~2:45–2:55 — under 3:00**. The two long beats
 (3 and 4) are flagged; if you run over, trim the *italic* clauses in beat 3 first.
 
-> **Claims verified against live `make demo` output (2026-08-02):** `2 critical, 1 high, 2
-> medium`; `churn_model_v3` = trained-on + IN_SERVICE; `reactivation_model_v1` =
+> **Claims verified against live `make demo` output (re-verified after the ownership-
+> escalation change):** `2 critical, 3 medium`; `churn_model_v3` = trained-on + IN_SERVICE; `reactivation_model_v1` =
 > inference-only; path `customers.customer_since → days_since_signup → churn_model_v3`;
-> write-back covers the 2 critical + 1 high + one document. All match the VO below.
+> write-back covers the 2 critical + one document. All match the VO below.
 
 ### Beat 1 — The silent break · 0:00–0:22 · ~22s / 55 words
 - **VO:** "A data engineer drops one column in a pull request — `customer_since`. Looks
@@ -171,7 +171,7 @@ DataHub pans and natural pauses this lands **~2:45–2:55 — under 3:00**. The 
   `customer_tenure_bucket`, into the model. The walker traced that whole chain and kept
   **both** paths — column-level, multi-hop, fully deterministic."
 - **On screen:** the rendered `make demo` comment. Highlight **in this order**: (1) the
-  `⚠️ ML blast radius: 2 critical, 1 high, 2 medium` header; (2) `churn_model_v3` — box
+  `⚠️ ML blast radius: 2 critical, 3 medium` header; (2) `churn_model_v3` — box
   **"trained on the changed column"** + **IN_SERVICE**; (3) **the `Paths (2 distinct — every
   route preserved):` block** — the money shot; run the cursor along the DEEP line first:
   `customers.customer_since → customer_engagement_daily → customer_ml_features →

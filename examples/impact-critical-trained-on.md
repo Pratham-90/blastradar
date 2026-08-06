@@ -1,4 +1,4 @@
-### ⚠️ ML blast radius: 2 critical, 1 high, 2 medium
+### ⚠️ ML blast radius: 2 critical, 3 medium
 
 This PR drops `customers.customer_since`, which feeds 5 downstream ML model(s) — the change will not raise an error, so the impact is silent.
 
@@ -14,14 +14,14 @@ This PR drops `customers.customer_since`, which feeds 5 downstream ML model(s) �
 - Path: `customers.customer_since` → `days_since_signup` → `reactivation_model_v1`
 
 `reactivation_model_v1` reads this column at inference time and is currently deployed and serving predictions. Dropping or renaming the column does not fail the pipeline; the feature silently emits nulls or stale values, so predictions degrade without any error surfacing.
-- _Why this severity: mlModel with an active deployment (inference-time consumption only); escalated one level: owner group set (growth-ml)_
+- _Why this severity: mlModel with an active deployment (inference-time consumption only); escalated one level: owner group set (growth-ml) on an active deployment_
 
-**🟠 high — `churn_model_v1`** (owner: @ml-platform · tags: Tier2)
+**🟡 medium — `churn_model_v1`** (owner: @ml-platform · tags: Tier2)
 - Deployment: not deployed  ·  Training: trained on the changed column
 - Path: `customers.customer_since` → `days_since_signup` → `churn_model_v1`
 
 `churn_model_v1` was trained on this column and is not currently deployed. Dropping or renaming the column does not fail the pipeline; the feature silently emits nulls or stale values, so predictions degrade without any error surfacing.
-- _Why this severity: mlModel with no active deployment; escalated one level: owner group set (ml-platform)_
+- _Why this severity: mlModel with no active deployment_
 
 **🟡 medium — `churn_model_v2`** (unowned)
 - Deployment: not deployed  ·  Training: trained on the changed column
@@ -51,8 +51,6 @@ Avoid an in-place change to `customers.customer_since`. Prefer a deprecate-then-
 | 🚫 | tag | `churn_model_v3` | disabled | tag `pending-upstream-change` |
 | 🚫 | incident | `reactivation_model_v1` | disabled | anchored on the changed dataset |
 | 🚫 | tag | `reactivation_model_v1` | disabled | tag `pending-upstream-change` |
-| 🚫 | incident | `churn_model_v1` | disabled | anchored on the changed dataset |
-| 🚫 | tag | `churn_model_v1` | disabled | tag `pending-upstream-change` |
 | 🚫 | document | `knowledge base` | disabled | full impact report |
 
 _set TOOLS_IS_MUTATION_ENABLED=true to apply_

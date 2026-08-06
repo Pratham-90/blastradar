@@ -19,7 +19,7 @@ Open a PR that drops `customers.customer_since`, and Blastradar posts this back 
 PR within seconds — *before* merge:
 
 ```text
-### ⚠️ ML blast radius: 2 critical, 1 high, 2 medium
+### ⚠️ ML blast radius: 2 critical, 3 medium
 
 This PR drops `customers.customer_since`, which feeds 5 downstream ML model(s) — the
 change will not raise an error, so the impact is silent.
@@ -36,7 +36,8 @@ change will not raise an error, so the impact is silent.
   Deployment: reactivation_model_v1-prod (IN_SERVICE) …   Training: reads it at inference only
   Path:       customers.customer_since → days_since_signup → reactivation_model_v1
 
-  … 🟠 1 high, 🟡 2 medium  (full report: examples/impact-critical-trained-on.md)
+  … 🟡 3 medium — trained on the column but not currently deployed
+     (full report: examples/impact-critical-trained-on.md)
 
 ### 📋 Write-back to DataHub
 Wrote findings back to DataHub Core: an incident + a `pending-upstream-change` tag on
@@ -218,10 +219,14 @@ Honesty over overclaiming:
   incident is opened on the changed *dataset* with the affected model named in the
   title/body. The document, whose `related_assets` *do* accept model URNs, links each
   model directly.
-- **Severity escalation is potent.** Owning a model escalates its severity one level,
-  which can push a deployed inference-only model to critical. It's faithful to the
-  spec's rule and fully traceable in the `reasons` on every finding, but the clause is
-  a candidate to revisit.
+- **Ownership escalates only on a live deployment.** A Tier1/Critical tag escalates
+  severity one level on its own. Ownership does *not*: it escalates only when the model
+  also has an active deployment. Ownership alone is near-universal on production models,
+  so treating it as an independent escalator fired on almost every asset and collapsed
+  HIGH into CRITICAL, drowning out the trained-vs-inference distinction. The remaining
+  consequence is deliberate but worth knowing: a **deployed, inference-only, owned** model
+  still reaches critical (`reactivation_model_v1` in the demo). Every escalation is
+  traceable in the `reasons` on each finding.
 - **PR posting validated against a mock GitHub API** (no live github.com remote in the
   build env); the real list/POST/PATCH calls run through the actual httpx path.
 - **Feature `sources` are dataset-granular** in this GMS (it rejects schemaField URNs on

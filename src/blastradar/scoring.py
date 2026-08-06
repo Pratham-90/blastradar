@@ -11,7 +11,9 @@ Table (verbatim from the Phase 1C spec):
     high     : mlModel with an active deployment (inference-time consumption only)
     medium   : mlModel or mlFeatureTable with no active deployment
     low      : dataset or dashboard with no ML downstream
-Then escalate one level if the asset carries a Tier1/Critical tag or has an owner group.
+Then escalate one level if the asset carries a Tier1/Critical tag, or has an owner group
+**and** an active deployment. (Ownership alone is near-universal on production models, so
+it is not an independent escalator — see :func:`_escalation_reason`.)
 
 Reachability note: :func:`score_graph` currently scores only ``mlModel`` terminals (the
 walker does not yet surface feature tables, datasets, or dashboards as terminals), so the
@@ -116,14 +118,25 @@ def _facts(asset: ImpactedAsset) -> _AssetFacts:
     return _AssetFacts(asset.entity_type, active, trained, ml_downstream)
 
 
-def _escalation_reason(asset: ImpactedAsset) -> str | None:
-    """The escalation clause that fires for this asset, or None."""
+def _escalation_reason(asset: ImpactedAsset, *, deployed: bool) -> str | None:
+    """The escalation clause that fires for this asset, or None.
+
+    A Tier1/Critical tag escalates on its own — the tag *is* the owning team's
+    explicit statement that this asset is high-stakes.
+
+    Ownership escalates only when the model also has an **active deployment**.
+    Ownership alone is a near-universal property of production models, so treating
+    it as an independent escalator fired on almost every asset and collapsed HIGH
+    into CRITICAL — which drowned out the distinction the tool exists to make
+    (trained-on vs. inference-only). Requiring "owned *and* serving traffic" keeps
+    the signal meaningful: a shelved model with an owner stays at its base severity.
+    """
     hit = [simple_name(t) for t in asset.tags if simple_name(t).lower() in ESCALATION_TAGS]
     if hit:
         return f"escalated one level: carries tag {', '.join(sorted(hit))}"
-    if asset.owners:
+    if asset.owners and deployed:
         owners = ", ".join(sorted(simple_name(o) for o in asset.owners))
-        return f"escalated one level: owner group set ({owners})"
+        return f"escalated one level: owner group set ({owners}) on an active deployment"
     return None
 
 
@@ -134,7 +147,7 @@ def score_asset(asset: ImpactedAsset) -> ScoredImpact:
     severity = rule.severity
     reasons = [rule.clause]
 
-    esc = _escalation_reason(asset)
+    esc = _escalation_reason(asset, deployed=facts.has_active_deployment)
     if esc is not None:
         bumped = _escalate(severity)
         if bumped != severity:

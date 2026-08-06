@@ -11,10 +11,10 @@ on the column or merely **reads it at inference**.
 ```
 $ python scripts/ml_impact.py --table customers --column customer_since
 
-### ⚠️ ML blast radius: 2 critical, 1 high, 2 medium
+### ⚠️ ML blast radius: 2 critical, 3 medium
 🔴 critical — churn_model_v3   trained on the changed column · deployed (IN_SERVICE)
 🔴 critical — reactivation_model_v1   reads it at inference only · deployed
-🟠 high — churn_model_v1 …   🟡 medium — churn_model_v2, ltv_model_v1
+🟡 medium — churn_model_v1, churn_model_v2, ltv_model_v1   trained on it, not deployed
 ```
 
 ## How it's built

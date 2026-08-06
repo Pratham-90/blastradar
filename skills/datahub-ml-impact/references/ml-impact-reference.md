@@ -49,7 +49,9 @@ them:
 | ⚪ low | dataset/dashboard with no ML downstream |
 
 Then **escalate one level** (toward critical) if the model carries a `Tier1`/`Critical`
-tag or has an owner group. "Active" deployment = status in `IN_SERVICE`, `UPDATING`,
+tag, or has an owner group **and** an active deployment. (Ownership alone is near-universal
+on production models, so it is not an independent escalator — it would collapse high into
+critical.) "Active" deployment = status in `IN_SERVICE`, `UPDATING`,
 `ROLLING_BACK`. Every finding carries a `reasons` trail so a score is always traceable to
 the exact clause that produced it.
 
