@@ -12,6 +12,13 @@ Table (verbatim from the Phase 1C spec):
     medium   : mlModel or mlFeatureTable with no active deployment
     low      : dataset or dashboard with no ML downstream
 Then escalate one level if the asset carries a Tier1/Critical tag or has an owner group.
+
+Reachability note: :func:`score_graph` currently scores only ``mlModel`` terminals (the
+walker does not yet surface feature tables, datasets, or dashboards as terminals), so the
+``mlFeatureTable`` / ``dataset`` / ``dashboard`` rows below cannot fire through that entry
+point today. They are kept — and exercised directly via :func:`score_asset` in the test
+suite — so the table stays a complete statement of the policy and starts working the
+moment the walker widens. Nothing silently mis-scores as a result.
 """
 
 from __future__ import annotations
