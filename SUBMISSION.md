@@ -33,7 +33,7 @@ https://github.com/Pratham-90/blastradar#try-it-in-60-seconds
 
 ### Video demo URL
 ```
-〈VIDEO_URL — pending recording; must be public and < 3:00〉
+https://www.youtube.com/watch?v=b9usxdF2DuA
 ```
 
 ### Built With (technology tags)
@@ -121,9 +121,12 @@ Tick every box before you hit submit on Devpost.
       `main` shows a passing CI run (`.github/workflows/ci.yml`, offline suite on 3.11 + 3.12).
 - [ ] **License in About** — the repo's **About** sidebar shows **"Apache-2.0"** (LICENSE is
       the unmodified Apache 2.0 text at the root).
-- [ ] **Video public and < 3:00** — recorded from [`docs/VIDEO-SCRIPT.md`](docs/VIDEO-SCRIPT.md),
-      uploaded, set **public** (playable without login), and added to the Devpost **Video demo**
-      field (not just linked in text). → paste 〈VIDEO_URL〉.
+- [x] **Video recorded and linked** — recorded from [`docs/VIDEO-SCRIPT.md`](docs/VIDEO-SCRIPT.md),
+      uploaded, and linked in the README + this packet:
+      https://www.youtube.com/watch?v=b9usxdF2DuA
+- [ ] **Video is public and < 3:00, added to Devpost** — confirm it's **public** (playable
+      without login) and under **3:00**, and add it to the Devpost **Video demo** field (not
+      just linked in text).
 - [ ] **"Try it" URL** — https://github.com/Pratham-90/blastradar#try-it-in-60-seconds is in
       the try-it field; confirmed `make demo` works from a cold clone in < 60s with no Docker.
 - [ ] **Category selected** — chose the track on the Devpost form → 〈CATEGORY〉.
@@ -139,8 +142,6 @@ Tick every box before you hit submit on Devpost.
 
 ## Brackets that still need a value from you
 
-1. **〈VIDEO_URL〉** — the public, sub-3:00 demo video link (not recorded yet — mark pending
-   until it's up).
-2. **〈CATEGORY〉** — the exact Devpost track/category name to select on the submission form.
+1. **〈CATEGORY〉** — the exact Devpost track/category name to select on the submission form.
 
 Everything else above is filled with real values.

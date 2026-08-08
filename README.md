@@ -5,6 +5,8 @@ production ML models a schema change is about to silently break** — using Data
 column-level lineage to trace the blast radius from a dropped column all the way down
 to the models trained on it.
 
+**▶️ [Watch the 3-minute demo](https://www.youtube.com/watch?v=b9usxdF2DuA)**
+
 ## The problem
 
 Dropping or renaming a column in a SQL/dbt model doesn't throw an error. The feature
